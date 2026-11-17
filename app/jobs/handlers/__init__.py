@@ -1,0 +1,27 @@
+"""Handler registry. One handler per job kind (guide 7.3).
+
+A handler is a module or object with either
+    run(job) -> dict                      synchronous kinds
+or  submit(job) -> str  and  finalize(job) -> dict      asynchronous kinds (video_clip, lipsync)
+Raise TransientError to retry in place; PermanentError to fail the attempt.
+"""
+from __future__ import annotations
+
+from typing import Any
+
+HANDLERS: dict[str, Any] = {}
+
+
+def register(kind: str, handler: Any) -> None:
+    HANDLERS[str(kind)] = handler
+
+
+def get_handler(kind: str) -> Any:
+    try:
+        return HANDLERS[kind]
+    except KeyError:
+        raise LookupError(f"no handler registered for job kind {kind!r}") from None
+
+
+def is_async(handler: Any) -> bool:
+    return hasattr(handler, "submit") and hasattr(handler, "finalize")
