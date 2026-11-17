@@ -4,6 +4,7 @@ import os
 import pytest
 
 os.environ["DRY_RUN"] = "1"
+os.environ["FAST_COMPILE"] = "1"      # graph tests skip the real 80-second encode; tests/test_phase8.py turns it off
 TEST_URL = os.environ.get("TEST_DATABASE_URL", "postgresql://postgres@localhost:5433/microdrama_test")
 os.environ["DATABASE_URL"] = TEST_URL
 

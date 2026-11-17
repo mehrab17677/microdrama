@@ -5,6 +5,7 @@ import math
 
 MIN_EST, MAX_EST = 2.0, 10.0
 MAX_SHOT = 10.0
+MIN_AUDIO = 2.0   # Kling audio limit (guide 10.3): a shorter B1 shot is stretched to 2 s
 RUNTIME_RANGE = (75.0, 90.0)
 
 
@@ -61,6 +62,9 @@ def fit_episode(shots: list[dict], timing: dict) -> dict:
     """shots: [{idx, tier, line_durations: [...], est_seconds}] in order.
     Returns {planned: {idx: s}, render: {idx: int}, runtime, too_long: [idx], in_range: bool}."""
     planned = {s["idx"]: planned_seconds(s["line_durations"], s.get("est_seconds"), timing) for s in shots}
+    for s in shots:  # a B1 shot's audio is the clip's audio, and the lip-sync/avatar endpoints need at least 2 s of it
+        if s["tier"] == "B1" and s["line_durations"]:
+            planned[s["idx"]] = max(planned[s["idx"]], MIN_AUDIO)
     too_long = [idx for idx, p in planned.items() if p > MAX_SHOT]
     runtime = runtime_seconds(list(planned.values()))
     lo, hi = RUNTIME_RANGE

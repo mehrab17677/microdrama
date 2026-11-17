@@ -27,7 +27,7 @@ def is_async(handler: Any) -> bool:
     return hasattr(handler, "submit") and hasattr(handler, "finalize")
 
 
-BUILTIN_MODULES = ["ingest_source", "llm_story_check", "story_handlers", "look_handlers"]
+BUILTIN_MODULES = ["ingest_source", "llm_story_check", "story_handlers", "look_handlers", "build_handlers"]
 
 
 def load_builtin() -> None:
