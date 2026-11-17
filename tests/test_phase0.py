@@ -24,6 +24,9 @@ def test_trivial():
 
 
 def test_migrations_twice_change_nothing(db_url):
+    with db.connect(db_url, autocommit=True) as conn:  # start from nothing, whatever ran before
+        conn.execute("drop schema public cascade")
+        conn.execute("create schema public")
     first = migrate.apply_migrations(db_url)
     assert "0001_init.sql" in first
     before = snapshot(db_url)
