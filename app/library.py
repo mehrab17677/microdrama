@@ -135,3 +135,22 @@ def recent_batches(limit: int = 10) -> list[dict]:
             " where s.batch_id = %s order by s.created_at, s.file_name", (b["batch_id"],),
         )
     return batches
+
+
+def ensure_story_source(series_id, text: str) -> uuid.UUID:
+    """The user's own story as a source scoped to the series (guide 12.4). Re-uploading an edited story
+    replaces the old one. The hash includes the series id so it never collides with a library file."""
+    sha = hashlib.sha256((text + str(series_id)).encode("utf-8")).hexdigest()
+    with db.transaction() as conn:
+        row = conn.execute("select id from sources where series_id = %s and file_sha256 = %s", (series_id, sha)).fetchone()
+        if row:
+            return row["id"]
+        conn.execute("delete from sources where series_id = %s", (series_id,))
+        source_id = uuid.uuid4()
+        key = f"sources/{source_id}/story.txt"
+        storage.put_bytes(key, text.encode("utf-8"), "text/plain")
+        conn.execute(
+            "insert into sources (id, series_id, batch_id, file_name, file_sha256, r2_key, status) values (%s, %s, %s, 'story.txt', %s, %s, 'queued')",
+            (source_id, series_id, uuid.uuid4(), sha, key),
+        )
+        return source_id

@@ -27,7 +27,7 @@ def is_async(handler: Any) -> bool:
     return hasattr(handler, "submit") and hasattr(handler, "finalize")
 
 
-BUILTIN_MODULES = ["ingest_source"]
+BUILTIN_MODULES = ["ingest_source", "llm_story_check"]
 
 
 def load_builtin() -> None:
@@ -38,3 +38,10 @@ def load_builtin() -> None:
         module = importlib.import_module(f"app.jobs.handlers.{name}")
         for kind in module.KINDS:
             register(kind, module)
+    from app.config import dry_run
+
+    if dry_run():  # stand-ins for kinds without a real handler; never registered in a real run
+        from app.jobs.handlers.dryrun_stubs import HANDLERS as STUBS
+
+        for kind, handler in STUBS.items():
+            HANDLERS.setdefault(kind, handler)

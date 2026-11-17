@@ -18,6 +18,11 @@ from app import budget, db
 ACTIVE = ("queued", "running", "submitted")
 
 
+def _dumps(obj) -> str:
+    """JSON for stored results: UUIDs and decimals become strings instead of crashing the job."""
+    return json.dumps(obj, default=str)
+
+
 @contextmanager
 def _use(conn=None):
     if conn is not None:
@@ -106,7 +111,7 @@ def succeed(job_id, result: dict | None, conn=None) -> bool:
         actual = Decimal(job["estimated_cost"]) if actual is None else Decimal(str(actual))
         c.execute(
             "update jobs set status = 'succeeded', result = %s, actual_cost = %s, finished_at = now(), locked_by = null, locked_at = null where id = %s",
-            (Jsonb(result), actual, job_id),
+            (Jsonb(result, dumps=_dumps), actual, job_id),
         )
         for r in cost_rows:
             c.execute(

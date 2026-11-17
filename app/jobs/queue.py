@@ -30,7 +30,7 @@ def claim(worker_id: str, conn=None) -> dict | None:
         busy = {r["vendor"]: r["n"] for r in c.execute(
             "select coalesce(vendor, 'local') vendor, count(*) n from jobs where status in ('running','submitted') group by 1"
         ).fetchall()}
-        blocked = [v for v, n in busy.items() if n >= limits.get(v, 10**9)]
+        blocked = [v for v, limit in limits.items() if busy.get(v, 0) >= limit]  # a limit of 0 pauses the vendor
         for job in c.execute(_CANDIDATE_SQL, {"blocked": blocked, "limit": CANDIDATES}).fetchall():
             if job["budget_class"] == "video" and job["phase"] == "submit" and not budget.charge_at_claim(c, job):
                 continue  # leave it queued and select another

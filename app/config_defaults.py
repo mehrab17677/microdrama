@@ -78,6 +78,9 @@ CONFIG_DEFAULTS: dict[str, tuple[object, str]] = {
     "max_upload_mb": (50, "Largest accepted source file"),
     "pilot_rework_rounds": (1, "Gate 4 feedback rounds allowed"),
     "raw_retention_days": (30, "Retention for raw and failed clips"),
+    "shot_count_range": ([8, 12], "Shots per episode (guide 9.6)"),
+    # DRY_RUN fixtures only: how big the fake productions are
+    "dryrun_episode_count": (45, "Episodes in a dry-run story bible (guide: 45 to 50)"),
     "music_model": ("music_v2", "ElevenLabs music model (music_v2_5 also valid; never leave the default music_v1)"),
     # Added from vendor verification (docs/VENDOR_NOTES.md)
     "sfx_model": ("eleven_text_to_sound_v3", "Sound-effects default is deprecated; always send this"),
