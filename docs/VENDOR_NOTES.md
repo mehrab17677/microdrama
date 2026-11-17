@@ -45,7 +45,7 @@ Real calls made:
 | `gpt-6-luna` with `.with_structured_output(Model, method="json_schema", include_raw=True)` | Works; `usage_metadata` gives token counts used for the cost log |
 | OpenAI embeddings and images | **Blocked: HTTP 429 "You have no credits remaining"** on the key in use. Mapped to PermanentError (not retried) |
 | fal queue, Seedance 4 s 1080p silent | **Blocked: HTTP 403 "User is locked. Reason: Exhausted balance"**. Key is accepted; the account needs a top-up |
-| Cloudflare R2 | **Unreachable from the cloud sandbox**: the tunnel opens, then TLS fails (`SSLV3_ALERT_HANDSHAKE_FAILURE`) at the egress proxy. Test from the deploy host. `R2_BUCKET` is not set yet |
+| Cloudflare R2 | First attempt failed at the egress proxy (TLS handshake). Later the same day, with `R2_BUCKET` set, **it works**: put, presigned GET (6 h, bytes match), get_to_file, delete, through `app/vendors/storage.py` and the preflight |
 | Anthropic, ElevenLabs | No key in this session |
 
 Still to record once the accounts allow it (guide section 13): output resolution and frame rate of Seedance, Kling V3,

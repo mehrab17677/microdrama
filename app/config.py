@@ -6,6 +6,15 @@ import time
 from dataclasses import dataclass
 
 
+def _alias_env() -> None:
+    """Some hosts hide ANTHROPIC_API_KEY from sessions. MICRODRAMA_ANTHROPIC_API_KEY is accepted too."""
+    if not os.environ.get("ANTHROPIC_API_KEY") and os.environ.get("MICRODRAMA_ANTHROPIC_API_KEY"):
+        os.environ["ANTHROPIC_API_KEY"] = os.environ["MICRODRAMA_ANTHROPIC_API_KEY"]
+
+
+_alias_env()
+
+
 def _env(name: str, default: str | None = None) -> str | None:
     value = os.environ.get(name)
     return value if value not in (None, "") else default
