@@ -73,7 +73,7 @@ read; the smoke script tries it); whether Kling LipSync accepts a Seedance 1080p
 - **Bangla matching.** Python's `\w` does not treat Bangla vowel signs as word characters; matching text is normalised by Unicode category so words stay whole. Latin terms match whole words only; Bangla terms match as substrings because suffixes attach to names.
 - **Alerts.** `action_started` is sent when a batch is accepted; `action_finished` (with ready, skipped and failed counts) once when its last source finishes, even if several finish at once.
 - **Worker hook.** A handler may define `on_failure(job, error)`; the worker calls it after a job fails for good, so a source never stays "processing".
-- **Not exercised for real yet:** the writer model calls (no Anthropic key in the session) and embeddings (OpenAI has no credit). Both are covered in dry-run only.
+- **Real calls so far:** the writer model analysis (below). Embeddings are still dry-run only (OpenAI has no credit).
 
 ## Phase 5 (graph skeleton) decisions
 - **Waiting and retrying.** A step is `enq_X` plus `wait_X`. A failed job is retried as a new attempt (up to `max_attempts`) in a new wait group (`...:a2`), so earlier failures never count against the retry. A repeat of the same request would be answered from the ledger, so every redo loop changes its request (`try`, `rev`, `attempt`).
@@ -87,3 +87,7 @@ read; the smoke script tries it); whether Kling LipSync accepts a Seedance 1080p
 - **Dry-run stubs** (`app/jobs/handlers/dryrun_stubs.py`) fake every kind that has no real handler. They register only when `DRY_RUN=1`. A stub production uses `dryrun_episode_count` episodes and ten shots per episode (five speaking, three lines each) so the real checks (8 to 12 shots, runtime 75 to 90 s) pass honestly.
 - **Not done yet, by design:** the per-failure repair table (phase 9: `plan_repairs` resets any failed shot to a fresh keyframe for now), the full feedback flow and its pages (phase 10: `apply_feedback` handles the categories but has no route), the script redo when runtime is outside 75 to 90 s (phase 8: it is recorded as a failed `runtime` check and shown at the gate).
 - **Face module** (`app/qa/face.py`) verified on a real photo with OpenCV 5: one face found, 128-number vector, a downscaled copy still matches at 0.96. The photo is not in the repo; tests replace face detection.
+
+## Real Anthropic calls (17 Nov 2026)
+- Preflight: `claude-opus-5-5`, `claude-sonnet-5-5` and `claude-haiku-5-5` all answered with the key from `MICRODRAMA_ANTHROPIC_API_KEY`.
+- Source analysis on a 3-chapter original story, role `writer` (Sonnet 5.5): two calls, 22 s, $0.027. `with_structured_output(..., method="json_schema", include_raw=True)` returned valid `GroupAnalysis` and `SourceAnalysis` objects first time; the code checks passed (10 pattern cards, none naming a character or place, 179-word plot summary). Names came back with Latin and Bangla forms (for example Kabir / কবীর). First names and full names are listed as separate blocklist terms.
