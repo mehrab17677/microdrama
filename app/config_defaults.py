@@ -19,6 +19,11 @@ CONFIG_DEFAULTS: dict[str, tuple[object, str]] = {
         },
         "Role -> model string (guide 6.1)",
     ),
+    "llm_max_tokens": (
+        {"default": 8000, "story": 16000, "writer": 16000, "director": 16000, "originality": 2000, "compiler": 2000, "vision_qa": 2000,
+         "vision_qa_strong": 2000, "rule_writer": 500, "copy": 4000},
+        "Output token limit per language-model role",
+    ),
     "price_book": (
         {
             # USD per million tokens
@@ -79,6 +84,7 @@ CONFIG_DEFAULTS: dict[str, tuple[object, str]] = {
     "pilot_rework_rounds": (1, "Gate 4 feedback rounds allowed"),
     "raw_retention_days": (30, "Retention for raw and failed clips"),
     "shot_count_range": ([8, 12], "Shots per episode (guide 9.6)"),
+    "episode_count_range": ([45, 50], "Episodes per series (guide 9.4). Tests lower the minimum to keep runs fast"),
     # DRY_RUN fixtures only: how big the fake productions are
     "dryrun_episode_count": (45, "Episodes in a dry-run story bible (guide: 45 to 50)"),
     "music_model": ("music_v2", "ElevenLabs music model (music_v2_5 also valid; never leave the default music_v1)"),

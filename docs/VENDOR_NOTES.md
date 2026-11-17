@@ -109,3 +109,32 @@ First real runs (17 Nov 2026), through `images.generate_image`:
 | master vs a different generated person (older man) | **0.35** | face match needs at least 0.36 |
 
 The last row matters: two different people can score about as high as the keyframe face-match threshold, so that check separates characters only weakly on stylised faces. Calibrate `qa_thresholds` on the pilot (the guide already asks for this) and consider a margin between "same person" and "other characters in the cast" rather than a single floor.
+
+## Phase 6 (story stage) decisions
+- **Real handlers** for `llm_bible`, `llm_beats`, `llm_placement_plan`, `llm_script`, `llm_continuity`, `llm_wardrobe`, `llm_originality` (`app/jobs/handlers/story_handlers.py`, logic in `app/stages/story.py` and `originality.py`). In DRY_RUN the same code runs: `llm.complete(fixture=...)` returns a schema-valid fixture (`story_fixtures.py`) and the real validators and database writes still execute. The Phase 5 stand-ins for these kinds are no longer used.
+- **Free-form dicts return empty from Claude.** Tested for real: a `dict[str, str]` field (`EpisodeBeat.handoff`) is accepted by the API but comes back `{}`. The model is asked for a list of `{code, state}` (and `{episode, scene}` for the wardrobe) and the result is converted to the guide's shapes.
+- **Output limits.** `llm_max_tokens` (config) sets a limit per role. ChatAnthropic's own default is 128,000 tokens, too high for a non-streaming call.
+- **Prompt caching.** Stage instructions, Story Bible JSON and series summary form one identical system prefix (marked cacheable); the per-call material and reviewer notes go in the user message (guide 9.2 order).
+- **Beats in chunks of 15 episodes**, each told the last four beats. A chunk is retried up to three times with the errors fed back; a model that stops early keeps its valid start and is asked only for the remainder (seen for real: it returned 12 of 15). The graph's own check still validates the whole sheet and redoes the step at most twice.
+- **Retries show the model what went wrong.** A failed attempt's error is stored on the job; the next attempt's prompt lists it ("Your previous attempt was rejected for these problems"). Gate 2 reviewer notes are added too.
+- **Ranges are config:** `episode_count_range` [45, 50]; tests lower the minimum to keep runs fast.
+- **Originality** (`app/stages/originality.py`): blocklist (every script line, action and beat); wording (8 identical words in a row, whole corpus streamed once, same language); similarity (nearest chunk by cosine, over `originality_cosine_max`, same language, pinned lore version, own story included); plot (the model, any language, top five sources). Failing episodes get ONE rewrite inside the originality job; `same_story` is only reported. The report is a `qa_results` row (`check_name = 'originality'`) shown on the review page.
+- **Gate 2 page:** `GET /productions/{id}/review/story` (logline, cast, sets, beat sheet, scripts, wardrobe, originality, placement plan; approve and reject with a redo target for deciders at the gate).
+- **Open-source embeddings for tests** (`EMBEDDING_BACKEND=local`): all-MiniLM-L6-v2, 384 numbers zero-padded to 1536 (padding keeps cosine similarity). English only; vectors must not be mixed with OpenAI ones in one database. Tests clear it.
+
+## Real story-stage run (17 Nov 2026, Claude Sonnet 5.5, Bangla, `scripts/smoke_story.py`)
+A library source (short English story, analysed by the model) and a new Bangla series, run through the real handlers with local embeddings.
+| Stage | Time | Cost | Result |
+|---|---|---|---|
+| Library source analysis | n/a | $0.039 | 3 chunks, 11 pattern cards, 12 blocklist terms |
+| Story bible | 62 s | $0.073 | passed first time: 45 episodes, 8 characters, 7 sets |
+| Beat sheet (45 episodes, 3 chunks) | **632 s** | **$0.891** | valid; one chunk first came back 3 episodes short and was handled per chunk |
+| Script, episode 1 | 62 s | $0.056 | attempt 1 estimated at 60 s (rejected), attempt 2 passed with the error shown to the model |
+| Script, episode 2 | 35 s | $0.064 | passed first time (Bangla lines, 20 words or fewer) |
+| Continuity (2 scripts) | 11 s | $0.027 | |
+| Wardrobe | 11 s | $0.032 | scene coverage validated |
+| Originality | 10 s | $0.012 | passed; the plot comparison noted shared motifs and judged it a different story |
+
+- **Cost and time of a whole story stage** extrapolate to roughly $4 to $5 (bible 0.07, beats 0.9, 45 scripts at about 0.06 each, then continuity, wardrobe, originality over all scripts) and 25 to 40 minutes, mostly the beat sheet and scripts. Costs are computed from token counts without the prompt-cache discount, so they overstate slightly. The guide's batch API would roughly halve the script cost (phase 13).
+- Everything the model returned passed through the real validators and the same persistence code as the dry run.
+- A script's own length estimate often lands just outside 75 to 90 s; the retry with the error shown fixes it. Expect about one script in a few to need a second attempt.

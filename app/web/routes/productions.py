@@ -89,6 +89,26 @@ def production_page(request: Request, series_id: uuid.UUID, user: dict = Depends
     })
 
 
+@router.get("/productions/{series_id}/review/story", response_class=HTMLResponse)
+def review_story(request: Request, series_id: uuid.UUID, user: dict = Depends(get_current_user)):
+    """Gate 2 review: logline, cast, beat sheet, scripts, wardrobe plan, originality report, placement plan."""
+    s = db.fetch_one("select s.*, u.display_name owner_name from series s join users u on u.id = s.owner_id where s.id = %s", (series_id,))
+    if s is None:
+        raise HTTPException(404, "Production not found.")
+    bible = db.fetch_one("select content, version from story_bibles where series_id = %s order by version desc limit 1", (series_id,))
+    episodes = db.fetch_all("select number, batch, beat, script from episodes where series_id = %s order by number", (series_id,))
+    wardrobe = db.fetch_all(
+        "select c.code character_code, c.name, w.code, w.description, w.scenes from wardrobe_items w join characters c on c.id = w.character_id"
+        " where w.series_id = %s order by c.code, w.code", (series_id,))
+    originality = db.fetch_one("select passed, detail from qa_results where series_id = %s and check_name = 'originality' order by created_at desc limit 1", (series_id,))
+    placements = db.fetch_all("select episode_number, kind, description from placements where series_id = %s order by episode_number", (series_id,))
+    can_decide = user["role"] == "admin" or s["owner_id"] == user["id"]
+    return templates.TemplateResponse(request, "review_story.html", {
+        "user": user, "s": s, "bible": bible and bible["content"], "episodes": episodes, "wardrobe": wardrobe, "originality": originality,
+        "placements": placements, "at_gate": s["status"] == "waiting_gate" and s["current_stage"] == "gate2", "can_decide": can_decide,
+    })
+
+
 def _fail(exc: decisions.DecisionError):
     raise HTTPException(exc.status, exc.detail)
 

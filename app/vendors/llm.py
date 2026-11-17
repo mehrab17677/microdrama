@@ -1,6 +1,6 @@
 """Language models (guide 6.1): one function, complete().
 
-complete(role, system, messages, schema=None, images=None) -> (parsed_or_text, usage)
+complete(role, system, messages, schema=None, images=None, fixture=None, cache_system=False) -> (parsed_or_text, usage)
 
 The role is looked up in config key llm_roles. With a schema the call uses
 .with_structured_output(schema, method="json_schema"): the new Claude models reject a forced
@@ -45,8 +45,22 @@ def _image_block(image: bytes | str) -> dict:
     return {"type": "image_url", "image_url": {"url": url}}
 
 
-def _build_messages(system: str, messages: list[dict], images) -> list[dict]:
-    out: list[dict] = [{"role": "system", "content": system}] if system else []
+def max_tokens_for(role: str) -> int:
+    """Output limit per role (config llm_max_tokens). ChatAnthropic's own default is 128,000, which is
+    far too high for a non-streaming call."""
+    try:
+        limits = get_config("llm_max_tokens")
+    except KeyError:
+        return 8000
+    return int(limits.get(role, limits.get("default", 8000)))
+
+
+def _build_messages(system: str, messages: list[dict], images, cache_system: bool = False) -> list[dict]:
+    if system and cache_system:
+        # Anthropic prompt caching: the long shared prefix (instructions, bible, summary) is read from cache on later calls.
+        out: list[dict] = [{"role": "system", "content": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]}]
+    else:
+        out = [{"role": "system", "content": system}] if system else []
     out.extend(dict(m) for m in messages)
     if images:
         last = out[-1] if out and out[-1]["role"] == "user" else None
@@ -64,16 +78,23 @@ def _usage(model: str, raw: Any) -> dict:
     return {"model": model, "tokens_in": tin, "tokens_out": tout, "cost_usd": llm_cost(model, tin, tout)}
 
 
-def complete(role: str, system: str, messages: list[dict], schema: type[BaseModel] | None = None, images=None):
+def complete(role: str, system: str, messages: list[dict], schema: type[BaseModel] | None = None, images=None, fixture=None, cache_system: bool = False):
+    """`fixture` (an object or a zero-argument callable) is what DRY_RUN returns instead of calling a model,
+    so the caller's real validation and persistence code still runs. Without one, a minimal valid object is synthesised."""
     model = model_for_role(role)
     if dry_run():
-        value = fixtures.synthesize(schema) if schema else "fixture text"
+        if fixture is not None:
+            value = fixture() if callable(fixture) else fixture
+            if schema is not None and not isinstance(value, schema):
+                value = schema.model_validate(value)
+        else:
+            value = fixtures.synthesize(schema) if schema else "fixture text"
         return value, {"model": model, "tokens_in": 0, "tokens_out": 0, "cost_usd": 0.0}
 
     from langchain.chat_models import init_chat_model
 
-    chat = init_chat_model(model)
-    msgs = _build_messages(system, messages, images)
+    chat = init_chat_model(model, max_tokens=max_tokens_for(role))
+    msgs = _build_messages(system, messages, images, cache_system)
     total_in = total_out = 0
     try:
         if schema is None:

@@ -117,6 +117,10 @@ def embed(texts: list[str]) -> tuple[list[list[float]], dict]:
     """1536-dimension embeddings (text-embedding-3-small). Callers batch in groups of 100."""
     if not texts:
         return [], {"model": EMBEDDING_MODEL, "tokens": 0, "cost_usd": 0.0}
+    if os.environ.get("EMBEDDING_BACKEND") == "local":  # opt-in open-source backend for tests; free, so also under DRY_RUN=1
+        from app.vendors import local_embeddings
+
+        return local_embeddings.embed(texts), {"model": f"local:{local_embeddings.model_id()}", "tokens": 0, "cost_usd": 0.0}
     if dry_run():
         return [fixtures.fake_embedding(t) for t in texts], {"model": EMBEDDING_MODEL, "tokens": 0, "cost_usd": 0.0}
     try:

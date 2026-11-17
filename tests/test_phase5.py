@@ -35,6 +35,7 @@ def env(db_url, monkeypatch, tmp_path):
         conn.commit()
     seed_config.seed(db_url)
     db.execute("update config set value = '5'::jsonb where key = 'dryrun_episode_count'")   # 3 pilot + 2 full episodes
+    db.execute("update config set value = '[1, 50]'::jsonb where key = 'episode_count_range'")  # the real minimum is 45
     clear_config_cache()
     monkeypatch.setattr(worker, "_sleep", lambda s: None)
     HANDLERS.clear()

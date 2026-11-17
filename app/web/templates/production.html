@@ -3,6 +3,7 @@
 <p>{{ s.category }} · {{ s.language }} · owner {{ s.owner_name }}</p>
 <p><strong>Status:</strong> {{ s.status }} · <strong>Stage:</strong> {{ s.current_stage }}{% if s.batch %} · batch {{ s.batch }}{% endif %}</p>
 <ol>{% for st in stages %}<li{% if loop.index0 == stage_index %} style="font-weight:700"{% endif %}>{{ st }}</li>{% endfor %}</ol>
+{% if gate == 2 %}<p><a href="/productions/{{ s.id }}/review/story"><button type="button">Review the story</button></a></p>{% endif %}
 {% if can_decide and gate %}
 <h2>Gate {{ gate }}</h2>
 {% if gate == 4 %}
