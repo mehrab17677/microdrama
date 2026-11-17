@@ -16,3 +16,10 @@ def db_url():
         conn.execute("drop schema public cascade")
         conn.execute("create schema public")
     return TEST_URL
+
+
+@pytest.fixture(autouse=True)
+def _no_real_r2(monkeypatch):
+    """Tests never touch the real bucket, even when R2 variables are set in the shell."""
+    for name in ("R2_ACCOUNT_ID", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"):
+        monkeypatch.delenv(name, raising=False)
