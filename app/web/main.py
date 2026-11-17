@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.web.deps import get_current_user
 from app.web.routes import auth as auth_routes
 from app.web.routes import team as team_routes
+from app.web.routes import webhooks as webhook_routes
 from app.web.templating import templates
 
 
@@ -25,6 +26,7 @@ app = FastAPI(title="microdrama")
 app.add_middleware(SessionMiddleware, secret_key=_secret(), https_only=True, same_site="lax", session_cookie="md_session")
 app.include_router(auth_routes.router)
 app.include_router(team_routes.router)
+app.include_router(webhook_routes.router)
 
 
 @app.exception_handler(HTTPException)

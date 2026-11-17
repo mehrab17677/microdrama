@@ -33,3 +33,35 @@ The vendor page wins (guide rule 2). Config keys mentioned live in `app/config_d
 - fal key accepted (404 for an unknown request id).
 - `gpt-6-luna` answered through `init_chat_model("openai:gpt-6-luna")`.
 - OpenAI embeddings request returned HTTP 429 "no credits remaining" on the key in use.
+
+## Phase 3: clients built, and what the first real calls showed (17 Nov 2026)
+Clients: `app/vendors/{llm,images,eleven,falmedia,falwebhook,storage,errors,fixtures}.py`, webhook route
+`app/web/routes/webhooks.py`, smoke script `scripts/smoke_vendors.py`. All have dry-run branches and tests.
+
+Real calls made:
+| Call | Result |
+|---|---|
+| `gpt-6-luna` through `init_chat_model("openai:gpt-6-luna")`, plain text | Works |
+| `gpt-6-luna` with `.with_structured_output(Model, method="json_schema", include_raw=True)` | Works; `usage_metadata` gives token counts used for the cost log |
+| OpenAI embeddings and images | **Blocked: HTTP 429 "You have no credits remaining"** on the key in use. Mapped to PermanentError (not retried) |
+| fal queue, Seedance 4 s 1080p silent | **Blocked: HTTP 403 "User is locked. Reason: Exhausted balance"**. Key is accepted; the account needs a top-up |
+| Cloudflare R2 | **Unreachable from the cloud sandbox**: the tunnel opens, then TLS fails (`SSLV3_ALERT_HANDSHAKE_FAILURE`) at the egress proxy. Test from the deploy host. `R2_BUCKET` is not set yet |
+| Anthropic, ElevenLabs | No key in this session |
+
+Still to record once the accounts allow it (guide section 13): output resolution and frame rate of Seedance, Kling V3,
+Kling Avatar and Kling LipSync; whether fal accepts base64 data URIs for `image_url` / `audio_url` (not stated in the docs
+read; the smoke script tries it); whether Kling LipSync accepts a Seedance 1080p clip (stop condition, guide 14); Bengali on
+`eleven_v3`; the `/v1/models` language list shape; whether image requests at `1152x2048` are accepted.
+
+## Webhook behaviour
+- Verified with locally generated Ed25519 keys: bad signature, changed body, stale or future timestamp (over 300 s), and each
+  missing header give 401; repeated deliveries change nothing; unknown request ids give 404 so fal retries (the row may not be
+  saved yet; the poller is the backstop); keys are cached for 24 hours and refetched once on a failed verification (rotation).
+- Not yet exercised: a real delivery from fal. It needs a public HTTPS `PUBLIC_BASE_URL`; the sandbox has none.
+
+## Other decisions
+- `R2_ENDPOINT` (full URL) is accepted instead of `R2_ACCOUNT_ID`.
+- ElevenLabs voice design uses `eleven_multilingual_ttv_v2` (the API default) via config key `voice_design_model`; compare with
+  `eleven_ttv_v3` in the voice test.
+- `price_book` gained `sfx_per_minute` (0.12) and `stt_per_hour` (0.20) from the ElevenLabs pricing page; voice design has no
+  price in the docs read and is logged at 0.

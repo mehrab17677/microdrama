@@ -112,14 +112,14 @@ def check_face_models() -> Result:
 def check_r2() -> Result:
     s = get_settings()
     if not s.r2_configured:
-        return FAIL, "R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET must all be set"
+        return FAIL, "R2_ACCOUNT_ID (or R2_ENDPOINT), R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET must all be set"
     import boto3
     import httpx
     from botocore.config import Config
 
     client = boto3.client(
         "s3",
-        endpoint_url=f"https://{s.r2_account_id}.r2.cloudflarestorage.com",
+        endpoint_url=s.r2_endpoint,
         aws_access_key_id=s.r2_access_key_id,
         aws_secret_access_key=s.r2_secret_access_key,
         region_name="auto",

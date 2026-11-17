@@ -28,7 +28,7 @@ def _backend() -> str:
         return "r2"
     if s.dry_run:
         return "local"
-    raise RuntimeError("R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET must be set")
+    raise RuntimeError("R2_ACCOUNT_ID (or R2_ENDPOINT), R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET must be set")
 
 
 def local_root() -> Path:
@@ -45,11 +45,11 @@ def _s3():
     from botocore.config import Config
 
     s = get_settings()
-    ident = (s.r2_account_id, s.r2_access_key_id, s.r2_secret_access_key)
+    ident = (s.r2_endpoint, s.r2_access_key_id, s.r2_secret_access_key)
     if _client is None or _client_key != ident:
         _client = boto3.client(
             "s3",
-            endpoint_url=f"https://{s.r2_account_id}.r2.cloudflarestorage.com",
+            endpoint_url=s.r2_endpoint,
             aws_access_key_id=s.r2_access_key_id,
             aws_secret_access_key=s.r2_secret_access_key,
             region_name="auto",

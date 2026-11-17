@@ -22,9 +22,7 @@ StatusFn = Callable[[dict], tuple[str, object]]
 
 
 def default_status(job: dict) -> tuple[str, object]:
-    if get_settings().dry_run:
-        return "done", {"dry_run": True}  # dry-run jobs complete once they are old enough
-    from app.vendors import falmedia  # Phase 3
+    from app.vendors import falmedia  # dry-run: completes with a fixture payload
 
     return falmedia.poll_status(job)
 

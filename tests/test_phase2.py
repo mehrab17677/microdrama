@@ -219,7 +219,7 @@ def test_async_job_goes_submit_poll_finalize(env):
     assert not ledger.vendor_completed(j["id"], {"again": 1})  # a repeated webhook changes nothing
     worker.run_one("w")
     row = status(j["id"])
-    assert row["status"] == "succeeded" and row["result"] == {"copied": True} and seen["payload"] == {"dry_run": True}
+    assert row["status"] == "succeeded" and row["result"] == {"copied": True} and seen["payload"]["dry_run"] is True and seen["payload"]["video"]["url"].startswith("file://")
 
 
 def test_vendor_error_fails_the_job(env):
@@ -418,6 +418,7 @@ def test_storage_rejects_bad_keys(env, key):
 
 
 def test_r2_presigned_url_is_valid_for_six_hours(env, monkeypatch):
+    monkeypatch.delenv("R2_ENDPOINT", raising=False)
     for k, v in {"R2_ACCOUNT_ID": "acct123", "R2_ACCESS_KEY_ID": "AK", "R2_SECRET_ACCESS_KEY": "SK", "R2_BUCKET": "bkt"}.items():
         monkeypatch.setenv(k, v)
     monkeypatch.setattr(storage, "_client", None)
@@ -428,7 +429,15 @@ def test_r2_presigned_url_is_valid_for_six_hours(env, monkeypatch):
 
 def test_real_mode_without_r2_settings_refuses(env, monkeypatch):
     monkeypatch.setenv("DRY_RUN", "0")
-    for k in ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"):
+    for k in ("R2_ACCOUNT_ID", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"):
         monkeypatch.delenv(k, raising=False)
     with pytest.raises(RuntimeError):
         storage.put_bytes("k", b"x")
+
+
+def test_r2_endpoint_variable_is_an_alternative_to_the_account_id(env, monkeypatch):
+    monkeypatch.delenv("R2_ACCOUNT_ID", raising=False)
+    for k, v in {"R2_ENDPOINT": "https://abc999.r2.cloudflarestorage.com/", "R2_ACCESS_KEY_ID": "AK", "R2_SECRET_ACCESS_KEY": "SK", "R2_BUCKET": "bkt"}.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr(storage, "_client", None)
+    assert storage.presign_get("a/b.mp4").startswith("https://abc999.r2.cloudflarestorage.com/")

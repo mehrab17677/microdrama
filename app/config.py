@@ -23,10 +23,18 @@ class Settings:
     r2_access_key_id: str | None
     r2_secret_access_key: str | None
     r2_bucket: str | None
+    r2_endpoint_override: str | None = None
+
+    @property
+    def r2_endpoint(self) -> str | None:
+        """R2_ENDPOINT if set (full https URL), else built from R2_ACCOUNT_ID (the guide's variable)."""
+        if self.r2_endpoint_override:
+            return self.r2_endpoint_override.rstrip("/")
+        return f"https://{self.r2_account_id}.r2.cloudflarestorage.com" if self.r2_account_id else None
 
     @property
     def r2_configured(self) -> bool:
-        return all([self.r2_account_id, self.r2_access_key_id, self.r2_secret_access_key, self.r2_bucket])
+        return all([self.r2_endpoint, self.r2_access_key_id, self.r2_secret_access_key, self.r2_bucket])
 
 
 def get_settings() -> Settings:
@@ -42,6 +50,7 @@ def get_settings() -> Settings:
         r2_access_key_id=_env("R2_ACCESS_KEY_ID"),
         r2_secret_access_key=_env("R2_SECRET_ACCESS_KEY"),
         r2_bucket=_env("R2_BUCKET"),
+        r2_endpoint_override=_env("R2_ENDPOINT"),
     )
 
 

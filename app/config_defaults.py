@@ -34,6 +34,8 @@ CONFIG_DEFAULTS: dict[str, tuple[object, str]] = {
             # VERIFIED-CHANGE: guide said 0.10; ElevenLabs API pricing page says 0.08 per 1,000 chars
             "speech_per_1k_chars": 0.08,
             "music_per_minute": 0.15,
+            "sfx_per_minute": 0.12,
+            "stt_per_hour": 0.20,
             "video": {
                 "seedance_1_5_pro": {"per_m_tokens_audio": 2.40, "per_m_tokens_silent": 1.20},
                 "kling_v3_pro": {"per_s_audio": 0.168, "per_s_silent": 0.112},
@@ -76,5 +78,6 @@ CONFIG_DEFAULTS: dict[str, tuple[object, str]] = {
     # Added from vendor verification (docs/VENDOR_NOTES.md)
     "sfx_model": ("eleven_text_to_sound_v3", "Sound-effects default is deprecated; always send this"),
     "stt_model": ("scribe_v3", "ElevenLabs speech to text"),
+    "voice_design_model": ("eleven_multilingual_ttv_v2", "API default; eleven_ttv_v3 is the alternative. Judge Bangla accents in the voice test"),
     "tts_model": ("eleven_v3", "ElevenLabs speech model"),
 }
