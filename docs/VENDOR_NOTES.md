@@ -91,3 +91,21 @@ read; the smoke script tries it); whether Kling LipSync accepts a Seedance 1080p
 ## Real Anthropic calls (17 Nov 2026)
 - Preflight: `claude-opus-5-5`, `claude-sonnet-5-5` and `claude-haiku-5-5` all answered with the key from `MICRODRAMA_ANTHROPIC_API_KEY`.
 - Source analysis on a 3-chapter original story, role `writer` (Sonnet 5.5): two calls, 22 s, $0.027. `with_structured_output(..., method="json_schema", include_raw=True)` returned valid `GroupAnalysis` and `SourceAnalysis` objects first time; the code checks passed (10 pattern cards, none naming a character or place, 179-word plot summary). Names came back with Latin and Bangla forms (for example Kabir / কবীর). First names and full names are listed as separate blocklist terms.
+
+## Open-source image backend for tests (`IMAGE_BACKEND=local_sd`)
+Added because the OpenAI image account has no credit. **Tests and development only; never the production default.**
+- **Model:** `stabilityai/sd-turbo` through `diffusers`, CPU, one step. Licence: Stability AI Community License (free for research, non-commercial and limited commercial use; commercial use needs registration with Stability and has a revenue ceiling). Install with `pip install -r requirements-local-images.txt` (not in the Docker image). The model (about 2.5 GB) downloads from Hugging Face on first use.
+- **Speed on 4 CPU cores:** about 25 s to load once per process, then about 13 to 20 s per image. Memory about 5 GB.
+- **1080x1920:** the model is trained on squares and a tall canvas stacks duplicate faces (the detector counted two). It generates at 512x512 and the picture is placed full-width in the middle of a 9:16 canvas over a blurred, enlarged copy of itself.
+- **References:** the first reference (its middle square) is the starting point of an image-to-image run. This keeps the person roughly the same; it is not identity guidance. Only one reference is used.
+- **Switch:** `IMAGE_BACKEND=local_sd` also applies under `DRY_RUN=1` (it costs nothing). The tests clear it, so they always use fixtures.
+- **Embeddings are not covered** (OpenAI embeddings still need credit).
+
+First real runs (17 Nov 2026), through `images.generate_image`:
+| Comparison (SFace cosine) | Score | Rule |
+|---|---|---|
+| master vs an image-to-image variation of her | 0.57 | pack match needs at least 0.40: passes |
+| master vs a real reference photo | 0.22 | likeness needs under 0.30: passes |
+| master vs a different generated person (older man) | **0.35** | face match needs at least 0.36 |
+
+The last row matters: two different people can score about as high as the keyframe face-match threshold, so that check separates characters only weakly on stylised faces. Calibrate `qa_thresholds` on the pilot (the guide already asks for this) and consider a margin between "same person" and "other characters in the cast" rather than a single floor.

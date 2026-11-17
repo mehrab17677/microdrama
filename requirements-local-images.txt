@@ -1,0 +1,10 @@
+# Optional, for tests only: the open-source image backend (IMAGE_BACKEND=local_sd). Not in the Docker image.
+# Install on top of requirements.txt:  pip install -r requirements-local-images.txt
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.15.0
+diffusers==0.43.0
+transformers==5.23.0
+accelerate==1.16.0
+safetensors==0.8.0
+huggingface-hub==2.4.0
+tokenizers==0.23.3

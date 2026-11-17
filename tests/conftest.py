@@ -23,3 +23,4 @@ def _no_real_r2(monkeypatch):
     """Tests never touch the real bucket, even when R2 variables are set in the shell."""
     for name in ("R2_ACCOUNT_ID", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("IMAGE_BACKEND", raising=False)  # tests use fixtures, never real generation

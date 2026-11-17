@@ -1,5 +1,8 @@
 """Images and embeddings (guide 6.2), OpenAI.
 
+Set IMAGE_BACKEND=local_sd to generate images with an open-source model instead (tests only; see
+app/vendors/local_images.py).
+
 Generate:  client.images.generate(model='gpt-image-2.5-flare', prompt, size, quality)
 Reference: POST /v1/images/edits with `images`, a list of 1 to 16 objects holding image_url.
 Size: OpenAI needs both sides divisible by 16, so 1080x1920 is invalid. config image_size_mode:
@@ -79,6 +82,11 @@ def generate_image(prompt: str, references: list[bytes | str] | None = None, qua
     mode = get_config("image_size_mode")
     size = request_size(mode)
 
+    if os.environ.get("IMAGE_BACKEND") == "local_sd":
+        # Opt-in open-source generator for tests; free, so it also runs under DRY_RUN=1 (see local_images.py).
+        from app.vendors import local_images
+
+        return local_images.generate(prompt, refs)
     if dry_run():
         return fixtures.fixture_bytes("image_1080x1920.png"), {"model": IMAGE_MODEL, "cost_usd": 0.0, "size": size}
 
