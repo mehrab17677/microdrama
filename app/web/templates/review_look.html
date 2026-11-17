@@ -1,0 +1,41 @@
+{% extends "base.html" %}{% block title %}Look review{% endblock %}
+{% block body %}
+<h1>{{ s.title }}: the look</h1>
+<p><a href="/productions/{{ s.id }}">← Production</a></p>
+{% if at_gate and can_decide %}
+<form id="decide" method="post" action="/productions/{{ s.id }}/gate/3">
+<input type="hidden" name="voices" value="{{ voices_json }}">
+{% endif %}
+{% for ch in characters %}
+<section style="border-top:1px solid #ddd;margin-top:1.5rem">
+<h2>{{ ch.c.code }} · {{ ch.c.name }} <small>({{ ch.c.role }}{% if ch.c.is_lead %}, lead{% endif %})</small></h2>
+<div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-start">
+{% if ch.ref_url %}<figure style="margin:0;width:150px"><img src="{{ ch.ref_url }}" alt="reference photo" style="width:150px"><figcaption><small>Your reference photo ({{ ch.ref_role }})</small></figcaption></figure>{% endif %}
+{% if ch.master %}<figure style="margin:0;width:150px"><img src="{{ ch.master.url }}" alt="master portrait" style="width:150px"><figcaption><small>Master portrait</small></figcaption></figure>{% endif %}
+</div>
+{% if ch.score is not none %}<p>Similarity to your reference photo: <strong>{{ '%.2f'|format(ch.score) }}</strong> (a different person must score under 0.30)
+{% if ch.too_similar %}<span class="err" style="padding:.1rem .4rem">too similar even after regenerating</span>{% endif %}</p>{% endif %}
+{% if ch.packs %}<h3>Pack</h3><div style="display:flex;gap:.6rem;flex-wrap:wrap">
+{% for p in ch.packs %}<figure style="margin:0;width:110px"><img src="{{ p.url }}" alt="{{ p.kind }}" style="width:110px"><figcaption><small>{{ p.kind }}{% for k, v in p.tags.items() %} · {{ v|string|replace('_', ' ') }}{% endfor %}
+{% if at_gate and can_decide %}<br><label><input type="checkbox" name="redo" value="{{ p.id }}"> redo</label>{% endif %}</small></figcaption></figure>{% endfor %}</div>{% endif %}
+{% if ch.voice %}<h3>Voice</h3>
+<audio controls src="{{ ch.voice.url }}"></audio>
+<p><small>{{ ch.c.voice_profile.accent if ch.c.voice_profile else '' }} · {{ ch.c.voice_profile.design_prompt if ch.c.voice_profile else '' }}<br>Says: "{{ ch.voice.tags.sample_text }}"<br>Voice id: {{ ch.voice.tags.voice_id }}
+{% if at_gate and can_decide %} · <label><input type="checkbox" name="redo" value="{{ ch.voice.id }}"> swap this voice</label>{% endif %}</small></p>{% endif %}
+</section>{% endfor %}
+
+{% if lineup %}<h2>Cast line-up</h2><img src="{{ lineup.url }}" alt="cast line-up" style="width:180px">
+{% if at_gate and can_decide %}<p><label><input type="checkbox" name="redo" value="{{ lineup.id }}"> redo the line-up</label></p>{% endif %}{% endif %}
+
+<h2>Sets</h2>
+<div style="display:flex;gap:1rem;flex-wrap:wrap">{% for st in sets %}<figure style="margin:0;width:140px">{% if st.plate_url %}<img src="{{ st.plate_url }}" alt="{{ st.name }}" style="width:140px">{% endif %}
+<figcaption><small>{{ st.code }} {{ st.name }} · {{ st.time_of_day }}</small></figcaption>{% if st.ambience_url %}<audio controls src="{{ st.ambience_url }}" style="width:140px"></audio>{% endif %}</figure>{% endfor %}</div>
+
+{% if at_gate and can_decide %}
+<h2>Your decision</h2>
+<label>Notes (for a rejection)<br><input name="notes" style="width:24rem"></label>
+<p>Approving fixes every face, outfit and voice shown here. To redo some assets, tick them above and reject.</p>
+<button name="decision" value="approve">Approve the look and voices</button> <button class="quiet" name="decision" value="reject">Reject the ticked assets</button>
+</form>
+{% endif %}
+{% endblock %}

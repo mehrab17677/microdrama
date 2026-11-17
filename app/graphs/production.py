@@ -27,6 +27,7 @@ from app.jobs import ledger
 from app.media import durations
 from app.models.enums import AlertKind
 from app.qa import face
+from app.stages import look as look_stage
 from app.stages import validation
 
 PER_SHOT_STEPS = {"keyframes", "requests", "clips", "lipsync"}
@@ -257,13 +258,7 @@ def route_reject_story(state):
 # ------------------------------------------------------------------ look stage nodes
 
 def _char_refs(sid) -> dict:
-    """character id -> brief_refs row, joined through the bible's slot_role to the intake role label."""
-    bible = common.latest_bible(sid)
-    if not bible:
-        return {}
-    slot_by_code = {c["code"]: c.get("slot_role") for c in bible["content"].get("characters", [])}
-    refs = {r["role_label"]: r for r in db.fetch_all("select * from brief_refs where series_id = %s and kind = 'character'", (sid,))}
-    return {c["id"]: refs[slot_by_code[c["code"]]] for c in db.fetch_all("select id, code from characters where series_id = %s", (sid,)) if slot_by_code.get(c["code"]) in refs}
+    return look_stage.character_refs(sid)
 
 
 def likeness_check(state):

@@ -99,3 +99,14 @@ def test_same_prompt_same_seed_and_too_many_references_still_rejected(env, monke
 
     with pytest.raises(PermanentError):
         images.generate_image("x", references=[b"1"] * 17)
+
+
+def test_the_most_specific_instruction_survives_the_models_77_token_limit():
+    long_description = " ".join(f"detail{i}" for i in range(120))
+    prompt = f"A woman. {long_description}.\nLook: warm amber light.\nfront-facing head-and-shoulders portrait, neutral expression, plain background"
+    out = local_images.prepare_prompt(prompt)
+    assert out.startswith("front-facing head-and-shoulders portrait, neutral expression, plain background")
+    assert len(out.split()) == local_images.PROMPT_WORDS and "detail100" not in out
+    pack = "The same person as the reference portrait. " + long_description + ". Head-and-shoulders portrait showing a anger expression, plain background."
+    assert local_images.prepare_prompt(pack).startswith("Head-and-shoulders portrait showing a anger expression")
+    assert local_images.prepare_prompt("short prompt") == "short prompt" and local_images.prepare_prompt("") == ""

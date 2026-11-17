@@ -20,8 +20,8 @@ from app.vendors import images, llm
 
 # ---------------------------------------------------------------- helpers
 
-def job_for(sid, kind, episode_id=None, **request):
-    return {"id": uuid.uuid4(), "kind": kind, "series_id": sid, "episode_id": episode_id, "request": {"rev": 0, **request}}
+def job_for(sid, job_kind, episode_id=None, **request):
+    return {"id": uuid.uuid4(), "kind": job_kind, "series_id": sid, "episode_id": episode_id, "request": {"rev": 0, **request}}
 
 
 def ctx_of(sid):

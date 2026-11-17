@@ -16,6 +16,7 @@ import base64
 import hashlib
 import io
 import os
+import re
 import threading
 import time
 
@@ -31,6 +32,28 @@ _pipes: dict | None = None
 
 def model_id() -> str:
     return os.environ.get("LOCAL_SD_MODEL", MODEL_ID_DEFAULT)
+
+
+PROMPT_WORDS = 55   # the model reads 77 tokens; punctuation and word pieces use up the rest
+
+
+def prepare_prompt(prompt: str, max_words: int = PROMPT_WORDS) -> str:
+    """The pipeline's prompts end with the most specific instruction (the fixed portrait text, the pose, the
+    plate rule) and the model silently drops everything past 77 tokens. Put that last unit first, then as much
+    of the rest as fits."""
+    units = [u.strip() for u in re.split(r"\n+|(?<=[.!?])\s+", prompt) if u.strip()]
+    if not units:
+        return prompt
+    ordered = [units[-1], *units[:-1]]
+    words: list[str] = []
+    for unit in ordered:
+        take = unit.split()
+        if len(words) + len(take) > max_words:
+            take = take[: max(0, max_words - len(words))]
+        words += take
+        if len(words) >= max_words:
+            break
+    return " ".join(words)
 
 
 def fit_to_9x16(img: Image.Image) -> Image.Image:
@@ -86,6 +109,7 @@ def generate(prompt: str, references: list[bytes | str] | None = None) -> tuple[
 
     pipes = _load_pipes()
     gen = torch.Generator().manual_seed(_seed(prompt))
+    prompt = prepare_prompt(prompt)
     started = time.time()
     with _lock:  # one generation at a time per process
         if references:

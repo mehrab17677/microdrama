@@ -19,6 +19,12 @@ from app.jobs.errors import PermanentError
 from app.vendors import fixtures
 from app.vendors.errors import check_response, map_exception
 
+def _local() -> bool:
+    """VOICE_BACKEND=local swaps in the open-source test backend (English only; see local_voice.py). Free, so it
+    also runs under DRY_RUN=1."""
+    return os.environ.get("VOICE_BACKEND") == "local"
+
+
 BASE = "https://api.elevenlabs.io"
 MAX_SPEECH_CHARS = 2000  # the docs call this a reliability limit
 MUSIC_MS = (3000, 600000)
@@ -112,6 +118,11 @@ def speech(text: str, voice_id: str, language_code: str, seed: int) -> tuple[dic
         raise PermanentError(f"line is {len(text)} characters; the limit is {MAX_SPEECH_CHARS}")
     model = get_config("tts_model")
     usage = {"model": model, "chars": len(text), "cost_usd": speech_cost(len(text))}
+    if _local():
+        from app.vendors import local_voice
+
+        audio = local_voice.speech(text, voice_id, language_code, seed)
+        return {"audio": audio, "alignment": None, "words": []}, {"model": "local:" + local_voice.MODEL_ID, "chars": len(text), "cost_usd": 0.0}
     if dry_run():
         n = len(text)
         alignment = {
@@ -137,6 +148,10 @@ def music(prompt: str, length_ms: int) -> tuple[bytes, dict]:
         raise PermanentError(f"music length must be {MUSIC_MS[0]} to {MUSIC_MS[1]} ms, got {length_ms}")
     model = get_config("music_model")
     usage = {"model": model, "length_ms": length_ms, "cost_usd": music_cost(length_ms)}
+    if _local():
+        from app.vendors import local_voice
+
+        return local_voice.music(prompt, length_ms), {"model": "local:procedural", "length_ms": length_ms, "cost_usd": 0.0}
     if dry_run():
         return fixtures.fixture_bytes("music_30s.mp3"), usage
     resp = _request(
@@ -157,6 +172,10 @@ def design_voice(description: str, sample_text: str | None = None) -> tuple[list
     else:
         body["auto_generate_text"] = True
     usage = {"model": body["model_id"], "cost_usd": 0.0}  # no price found in the docs read
+    if _local():
+        from app.vendors import local_voice
+
+        return local_voice.design(description, sample_text), {"model": "local:" + local_voice.MODEL_ID, "cost_usd": 0.0}
     if dry_run():
         vid = "dry-gen-" + hashlib.sha256(description.encode()).hexdigest()[:10]
         return [{"generated_voice_id": vid, "audio": fixtures.fixture_bytes("speech_2s.mp3"), "duration_secs": 2.0}], usage
@@ -170,6 +189,8 @@ def design_voice(description: str, sample_text: str | None = None) -> tuple[list
 
 def save_voice(generated_voice_id: str, name: str, description: str) -> str:
     """Save a chosen preview as a permanent voice. Returns the voice_id."""
+    if _local():
+        return generated_voice_id  # a local voice id is self-contained: it carries its own pitch and tempo
     if dry_run():
         return "dry-voice-" + hashlib.sha256(generated_voice_id.encode()).hexdigest()[:10]
     data = _request(
@@ -186,6 +207,10 @@ def sound_effect(text: str, duration_seconds: float | None = None, loop: bool = 
         raise PermanentError("sound effect duration must be 0.5 to 30 seconds")
     model = get_config("sfx_model")
     usage = {"model": model, "cost_usd": sfx_cost(duration_seconds or 30)}
+    if _local():
+        from app.vendors import local_voice
+
+        return local_voice.ambience(text, duration_seconds or 30, loop), {"model": "local:procedural", "cost_usd": 0.0}
     if dry_run():
         return fixtures.fixture_bytes("ambience_30s.mp3"), usage
     body: dict = {"text": text, "model_id": model, "loop": loop}

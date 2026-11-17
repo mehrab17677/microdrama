@@ -99,3 +99,12 @@ def presign_get(key: str, seconds: int = DEFAULT_PRESIGN_SECONDS) -> str:
     return _s3().generate_presigned_url(
         "get_object", Params={"Bucket": get_settings().r2_bucket, "Key": key}, ExpiresIn=seconds
     )
+
+
+def is_local() -> bool:
+    """True when objects live in the local directory (DRY_RUN without R2 settings)."""
+    return _backend() == "local"
+
+
+def local_file(key: str) -> Path:
+    return _local_path(key)

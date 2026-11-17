@@ -138,3 +138,23 @@ A library source (short English story, analysed by the model) and a new Bangla s
 - **Cost and time of a whole story stage** extrapolate to roughly $4 to $5 (bible 0.07, beats 0.9, 45 scripts at about 0.06 each, then continuity, wardrobe, originality over all scripts) and 25 to 40 minutes, mostly the beat sheet and scripts. Costs are computed from token counts without the prompt-cache discount, so they overstate slightly. The guide's batch API would roughly halve the script cost (phase 13).
 - Everything the model returned passed through the real validators and the same persistence code as the dry run.
 - A script's own length estimate often lands just outside 75 to 90 s; the retry with the error shown fixes it. Expect about one script in a few to need a second attempt.
+
+## Phase 7 (look stage) decisions
+- **Real handlers** (`app/jobs/handlers/look_handlers.py`, logic in `app/stages/look.py`): trait sheet (vision, role writer), voice profile (writer), emotion groups and line tags (role copy, `gpt-6-luna`), master portrait, pack images, set plates, ambience and voice design. Dry run executes the same code on fixtures; a dry-run master with no detectable face uses a deterministic stand-in vector so the likeness loop is still exercised.
+- **Reference order for masters:** the reference photo goes first on tries 1 and 2 and is left out on try 3 (guide 8.5/9.5 read together: twice at most, the second regeneration without the photo). With the OpenAI edits endpoint order is irrelevant; the local backend uses only the first image.
+- **Review images** are the clean image plus a Pillow caption bar (name and tags); clean images carry no text. Both are stored (`_review.png`, `_clean.png`) and tested pixel for pixel.
+- **Media route** `GET /media/{series_id}/{path}`: login required, any active member may view; it redirects to a one-hour presigned R2 URL (or serves the local test store) and refuses `..` paths and unknown series.
+- **Gate 3 page** `GET /productions/{id}/review/look`: reference photo beside each master with the likeness score (flagged if it stayed too similar), pack images, voice sample player with the sample line, set plates and ambience, and a "redo" checkbox per asset. Approving posts the current voice of each speaking character; ticked assets plus "reject" redo exactly those.
+- **Image media type:** the model wrapper now labels images with their real type (found by the first bytes); Claude rejected a JPEG labelled PNG in the first real vision call. Intake converts references to PNG, so the pipeline itself was unaffected.
+- **Open-source stand-ins** are documented separately in `docs/OPEN_SOURCE_TEST_SUBSTITUTES.md`.
+
+### Real look-stage run (17 Nov 2026; Claude and gpt-6-luna real, images and voices from the open-source backends)
+| Step | Time | Cost | Result |
+|---|---|---|---|
+| Trait sheet (Claude, from a real photo) | 7 s | $0.004 | a faithful 55-word description; no names |
+| Voice profile x2 (Claude) | 5 s each | $0.005 each | valid, distinct descriptions |
+| Emotion groups x2 (`gpt-6-luna`) | 2 to 4 s | $0.0001 | every emotion grouped (for example "defiant" under anger) |
+| Master portraits x2 (local SD) | 14 to 23 s | free | one face each; Lead 1 vs the photo scored 0.36 (limit 0.30: it would be regenerated) |
+| Pack images (turnaround, expression, wardrobe) | 19 s each | free | match to master 0.63, 0.66, 0.74 (floor 0.40) |
+| Line-up, set plate, ambience, voice design x2 | 4 to 19 s | free | all written; review bars show the right names and tags |
+Whole stage about 3 minutes and $0.015 for this slice. With the real image and voice APIs the cost is dominated by images (about 25 per lead character).

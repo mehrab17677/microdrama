@@ -109,6 +109,45 @@ def review_story(request: Request, series_id: uuid.UUID, user: dict = Depends(ge
     })
 
 
+def _media(series_id, key: str | None) -> str | None:
+    prefix = f"series/{series_id}/"
+    return f"/media/{series_id}/{key[len(prefix):]}" if key and key.startswith(prefix) else None
+
+
+@router.get("/productions/{series_id}/review/look", response_class=HTMLResponse)
+def review_look(request: Request, series_id: uuid.UUID, user: dict = Depends(get_current_user)):
+    """Gate 3 review: each character's pack beside the reference photo, set plates, and a voice sample per speaking character."""
+    from app.stages import look as look_stage
+
+    s = db.fetch_one("select s.*, u.display_name owner_name from series s join users u on u.id = s.owner_id where s.id = %s", (series_id,))
+    if s is None:
+        raise HTTPException(404, "Production not found.")
+    refs = look_stage.character_refs(series_id)
+    scores = {r["detail"]["character_id"]: r for r in db.fetch_all("select score, passed, detail from qa_results where series_id = %s and check_name = 'likeness'", (series_id,))}
+    characters, voices = [], {}
+    for c in db.fetch_all("select * from characters where series_id = %s order by code", (series_id,)):
+        assets = db.fetch_all("select id, kind, tags, r2_key_review, r2_key_clean, version from character_assets where character_id = %s order by kind, created_at", (c["id"],))
+        master = next((a for a in assets if a["kind"] == "master"), None)
+        voice = next((a for a in assets if a["kind"] == "voice_sample"), None)
+        if voice:
+            voices[c["code"]] = voice["tags"].get("voice_id")
+        ref = refs.get(c["id"])
+        score = scores.get(str(c["id"]))
+        characters.append({
+            "c": c, "ref_url": ref and _media(series_id, ref["r2_key"]), "ref_role": ref and ref["role_label"], "master": master and {**master, "url": _media(series_id, master["r2_key_review"])},
+            "packs": [{**a, "url": _media(series_id, a["r2_key_review"])} for a in assets if a["kind"] not in ("master", "voice_sample")],
+            "voice": voice and {**voice, "url": _media(series_id, voice["r2_key_clean"])},
+            "score": score and float(score["score"]), "too_similar": score and not score["passed"],
+        })
+    lineup = db.fetch_one("select id, r2_key_review from character_assets where series_id = %s and kind = 'lineup' limit 1", (series_id,))
+    sets = [{**r, "plate_url": _media(series_id, r["plate_r2_key"]), "ambience_url": _media(series_id, r["ambience_r2_key"])} for r in db.fetch_all("select * from sets where series_id = %s order by code, time_of_day", (series_id,))]
+    can_decide = user["role"] == "admin" or s["owner_id"] == user["id"]
+    return templates.TemplateResponse(request, "review_look.html", {
+        "user": user, "s": s, "characters": characters, "lineup": lineup and {**lineup, "url": _media(series_id, lineup["r2_key_review"])}, "sets": sets,
+        "voices_json": json.dumps(voices), "at_gate": s["status"] == "waiting_gate" and s["current_stage"] == "gate3", "can_decide": can_decide,
+    })
+
+
 def _fail(exc: decisions.DecisionError):
     raise HTTPException(exc.status, exc.detail)
 
@@ -122,7 +161,9 @@ def decide_gate(
     target: str = Form(""),
     voices: str = Form(""),
     story_text: str = Form(""),
+    redo: list[str] = Form(default=[]),
 ):
+    target = target or ",".join(redo)          # the review page sends one checkbox per asset to redo
     try:
         voice_map = json.loads(voices) if voices.strip() else {}
         if not isinstance(voice_map, dict):

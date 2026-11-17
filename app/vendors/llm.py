@@ -37,9 +37,22 @@ def llm_cost(model: str, tokens_in: int, tokens_out: int, price_book: dict | Non
     return tokens_in / 1e6 * rate_in + tokens_out / 1e6 * rate_out
 
 
+def sniff_image_type(data: bytes) -> str:
+    """The real media type from the file's first bytes: the API rejects a label that does not match."""
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/png"
+
+
 def _image_block(image: bytes | str) -> dict:
     if isinstance(image, bytes):
-        url = "data:image/png;base64," + base64.b64encode(image).decode()
+        url = f"data:{sniff_image_type(image)};base64," + base64.b64encode(image).decode()
     else:
         url = image
     return {"type": "image_url", "image_url": {"url": url}}
