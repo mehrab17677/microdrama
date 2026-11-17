@@ -72,6 +72,10 @@ CONFIG_DEFAULTS: dict[str, tuple[object, str]] = {
     "fal_timeout_minutes": (30, "Fail submitted jobs after this long"),
     "gate_reminder_hours": (24, "Reminder period for open gates"),
     "story_min_words": (1500, "Minimum length of a user-supplied story"),
+    # Library ingestion. Bangla text uses far more embedding tokens per word, so its limits are lower.
+    "chunk_words": ({"en": 3000, "bn": 1000}, "Largest source chunk (guide: 3,000 words; Bangla lower to stay inside embedding limits)"),
+    "ingest_group_words": ({"en": 12000, "bn": 4000}, "Words of a source sent to the writer model per analysis call"),
+    "max_upload_mb": (50, "Largest accepted source file"),
     "pilot_rework_rounds": (1, "Gate 4 feedback rounds allowed"),
     "raw_retention_days": (30, "Retention for raw and failed clips"),
     "music_model": ("music_v2", "ElevenLabs music model (music_v2_5 also valid; never leave the default music_v1)"),

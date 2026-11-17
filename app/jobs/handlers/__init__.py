@@ -25,3 +25,16 @@ def get_handler(kind: str) -> Any:
 
 def is_async(handler: Any) -> bool:
     return hasattr(handler, "submit") and hasattr(handler, "finalize")
+
+
+BUILTIN_MODULES = ["ingest_source"]
+
+
+def load_builtin() -> None:
+    """Register every built-in handler module for the kinds it lists in KINDS."""
+    import importlib
+
+    for name in BUILTIN_MODULES:
+        module = importlib.import_module(f"app.jobs.handlers.{name}")
+        for kind in module.KINDS:
+            register(kind, module)

@@ -70,3 +70,8 @@ def fetch_all(sql: str, params: Any = None) -> list[dict]:
 def execute(sql: str, params: Any = None) -> int:
     with get_pool().connection() as conn:
         return conn.execute(sql, params).rowcount
+
+
+def to_vector(values) -> str:
+    """A pgvector literal for use as `%s::vector`."""
+    return "[" + ",".join(repr(float(v)) for v in values) + "]"

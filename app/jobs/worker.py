@@ -30,6 +30,7 @@ def _call_with_retry(fn, job: dict):
 
 def process(job: dict) -> None:
     """Run one claimed job to its next state."""
+    handler = None
     try:
         handler = get_handler(job["kind"])
         if job["phase"] == "finalize":
@@ -39,10 +40,19 @@ def process(job: dict) -> None:
         else:
             ledger.succeed(job["id"], _call_with_retry(handler.run, job))
     except PermanentError as exc:
-        ledger.fail(job["id"], str(exc))
+        _failed(job, handler, str(exc))
     except Exception as exc:  # noqa: BLE001 - a bug in a handler must not leave the job stuck
         log.exception("job %s crashed", job["id"])
-        ledger.fail(job["id"], f"{type(exc).__name__}: {exc}")
+        _failed(job, handler, f"{type(exc).__name__}: {exc}")
+
+
+def _failed(job: dict, handler, message: str) -> None:
+    """Fail the job, then let the handler update its own rows (optional on_failure(job, error))."""
+    if ledger.fail(job["id"], message) and handler is not None and hasattr(handler, "on_failure"):
+        try:
+            handler.on_failure(job, message)
+        except Exception:  # noqa: BLE001
+            log.exception("on_failure hook failed for job %s", job["id"])
 
 
 def run_one(worker_id: str) -> bool:
@@ -66,6 +76,9 @@ def _loop(worker_id: str) -> None:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
+    from app.jobs.handlers import load_builtin
+
+    load_builtin()
     n = get_settings().worker_concurrency
     base = f"{socket.gethostname()}:{os.getpid()}"
     log.info("worker %s starting %d thread(s)", base, n)

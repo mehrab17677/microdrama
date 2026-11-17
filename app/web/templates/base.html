@@ -15,7 +15,7 @@
  .ok{background:#e9f7ee;border:1px solid #b3dfc0;padding:.5rem .75rem;border-radius:6px;margin-bottom:1rem}
 </style></head><body>
 <header><a href="/"><strong>Microdrama</strong></a>
-{% if user %}{% if user.role == 'admin' %}<a href="/team">Team</a>{% endif %}<span class="sp"></span>
+{% if user %}<a href="/library">Library</a>{% if user.role == 'admin' %}<a href="/team">Team</a>{% endif %}<span class="sp"></span>
 <span>{{ user.display_name }}</span>
 <form method="post" action="/auth/logout"><button class="quiet">Sign out</button></form>{% endif %}</header>
 <main>{% block body %}{% endblock %}</main></body></html>

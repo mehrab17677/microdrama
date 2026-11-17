@@ -1,0 +1,51 @@
+{
+ "pattern_cards": [
+  {
+   "kind": "trope",
+   "title": "Returning to the place of the wound",
+   "body": "A lead comes back to the setting of an old betrayal under a pretext, and every familiar place forces a memory that the other lead must also face."
+  },
+  {
+   "kind": "hook",
+   "title": "A debt revealed in the first minute",
+   "body": "The opening beat shows a hidden obligation in a single image, so the audience asks who is owed and what happens when it is called in."
+  },
+  {
+   "kind": "beat_structure",
+   "title": "Secret, pressure, partial reveal",
+   "body": "Each episode raises the pressure on a concealed truth, delivers a partial reveal at the midpoint, and ends on a new question rather than an answer."
+  },
+  {
+   "kind": "cliffhanger",
+   "title": "The letter in the wrong hands",
+   "body": "The final shot lands on a private document passing to the person who would use it, cutting before any reaction so the next episode opens on consequences."
+  },
+  {
+   "kind": "emotional_turn",
+   "title": "Kindness that breaks the grudge",
+   "body": "A small unprompted act of care from the antagonist lands at the lowest point and changes the lead's posture from defence to doubt."
+  },
+  {
+   "kind": "archetype",
+   "title": "The watcher who knows everything",
+   "body": "A minor local figure sees every meeting and trades small hints, pushing the leads together while protecting their own interests."
+  },
+  {
+   "kind": "pacing",
+   "title": "Short scenes, one reveal each",
+   "body": "Scenes run under thirty seconds with a single piece of new information, so the story never pauses and every exchange moves the conflict."
+  }
+ ],
+ "plot_summary": "A young woman returns to the village she fled years ago, hiding a debt that binds her to the man who once betrayed her. Each time they meet an old secret surfaces, the town takes sides, and a quiet act of kindness begins to change what both of them believe about forgiveness and about the people who watched them fall. Pressure rises as the debt comes due, a rival reveals a hidden letter, and the leads must choose between safety and the truth. In the final stretch an old promise is kept at great cost, the village learns what really happened, and the couple leaves with a fragile, earned peace. Along the way the leads trade careful half-truths, each protecting a different piece of the same buried story, while the watchers around them quietly decide whose side to take. A flood threatens the lower fields and forces everyone to work together, which cracks open old alliances and exposes who has been profiting from the debt. The antagonist's motives turn out to be more tangled than revenge, rooted in a promise to someone no longer alive, and that discovery reframes every earlier scene for the heroine.",
+ "source_card": {
+  "logline": "A woman returns home to settle a debt and a grudge.",
+  "tone": "tense, intimate",
+  "setting": "a small riverside village",
+  "main_conflict": "hidden debt versus rebuilding trust",
+  "themes": [
+   "forgiveness",
+   "secrets",
+   "community"
+  ]
+ }
+}

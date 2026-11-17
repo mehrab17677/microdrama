@@ -65,3 +65,12 @@ read; the smoke script tries it); whether Kling LipSync accepts a Seedance 1080p
   `eleven_ttv_v3` in the voice test.
 - `price_book` gained `sfx_per_minute` (0.12) and `stt_per_hour` (0.20) from the ElevenLabs pricing page; voice design has no
   price in the docs read and is logged at 0.
+
+## Phase 4 (library) decisions
+- **Duplicates.** `sources.file_sha256` is unique, so a skipped duplicate is stored as `<sha>:dup:<id>` with status `skipped_duplicate` and a note naming the original. A failed source releases its hash (`<sha>:failed:<id>`) so the same file can be uploaded again; unsupported or oversized files are stored as `<sha>:rejected:<id>`.
+- **Chunk size.** The guide says 3,000 words. Bangla needs many more embedding tokens per word, which would exceed the 8,192-token input limit, so `chunk_words` is `{"en": 3000, "bn": 1000}`. A chapter longer than the limit is split further. A last-resort character cap also applies before embedding.
+- **Analysis.** Two steps so long books fit: per-part notes and name lists (`ingest_group_words`), then pattern cards, plot summary and source card from the notes. Code rejects cards that are not 5 to 15, run over 80 words, contain a source name or term, or share 8 identical consecutive words with the source; the model gets one retry with the problems listed.
+- **Bangla matching.** Python's `\w` does not treat Bangla vowel signs as word characters; matching text is normalised by Unicode category so words stay whole. Latin terms match whole words only; Bangla terms match as substrings because suffixes attach to names.
+- **Alerts.** `action_started` is sent when a batch is accepted; `action_finished` (with ready, skipped and failed counts) once when its last source finishes, even if several finish at once.
+- **Worker hook.** A handler may define `on_failure(job, error)`; the worker calls it after a job fails for good, so a source never stays "processing".
+- **Not exercised for real yet:** the writer model calls (no Anthropic key in the session) and embeddings (OpenAI has no credit). Both are covered in dry-run only.

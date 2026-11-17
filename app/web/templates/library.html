@@ -1,0 +1,44 @@
+{% extends "base.html" %}{% block title %}Library{% endblock %}
+{% block body %}<h1>Library</h1>
+<h2>Add sources</h2>
+<form class="stack" method="post" action="/library/upload" enctype="multipart/form-data" style="max-width:32rem">
+<label>Genre
+<input name="genre" id="genre" list="genre-list" required autocomplete="off" placeholder="e.g. revenge romance">
+<datalist id="genre-list"></datalist></label>
+<label>Files (.txt, .epub, .pdf)<input type="file" name="files" multiple required accept=".txt,.epub,.pdf"></label>
+<button>Upload</button></form>
+<script>
+// Genre suggestions while typing (guide 12.3).
+const box = document.getElementById('genre'), list = document.getElementById('genre-list');
+let timer;
+box.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(async () => {
+  const r = await fetch('/library/genres?q=' + encodeURIComponent(box.value));
+  if (!r.ok) return;
+  list.innerHTML = '';
+  for (const g of await r.json()) { const o = document.createElement('option'); o.value = g.name; list.appendChild(o); }
+}, 150); });
+</script>
+
+<h2>Batches</h2>
+{% if not batches %}<p>No uploads yet.</p>{% endif %}
+{% for b in batches %}
+<details {% if highlight == b.batch_id|string or loop.first %}open{% endif %}><summary>Batch started {{ b.started.strftime('%Y-%m-%d %H:%M') }} · {{ b.files|length }} file(s)</summary>
+<table><tr><th>File</th><th>Genre</th><th>Status</th><th>Note</th></tr>
+{% for f in b.files %}<tr><td>{{ f.file_name }}</td><td>{{ f.genre }}</td><td>{{ f.status }}</td><td>{{ f.error or '' }}</td></tr>{% endfor %}
+</table></details>{% endfor %}
+
+<h2>Genres</h2>
+{% if genres %}<table><tr><th>Genre</th><th>Ready sources</th><th>All sources</th></tr>
+{% for g in genres %}<tr><td>{{ g.name }}</td><td>{{ g.ready_sources }}</td><td>{{ g.total_sources }}</td></tr>{% endfor %}</table>
+<p><small>A genre can be chosen for a production only once it has a ready source.</small></p>
+{% else %}<p>No genres yet.</p>{% endif %}
+
+<h2>Source cards</h2>
+{% for c in cards %}<details><summary>{{ c.file_name }} · {{ c.genre }}</summary>
+{% set sc = c.source_card or {} %}
+<p><strong>{{ sc.get('logline') }}</strong></p>
+<p>Tone: {{ sc.get('tone') }} · Setting: {{ sc.get('setting') }}</p>
+<p>Conflict: {{ sc.get('main_conflict') }}</p>
+<p>Themes: {{ (sc.get('themes') or [])|join(', ') }} · {{ sc.get('word_count') }} words, {{ sc.get('language') }}</p></details>
+{% else %}<p>No ready sources yet.</p>{% endfor %}
+{% endblock %}
