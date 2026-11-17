@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Microdrama{% endblock %}</title>
+<style>
+ body{font:16px/1.5 system-ui,sans-serif;margin:0;color:#1b1b1f;background:#fafafa}
+ header{display:flex;gap:1rem;align-items:center;padding:.75rem 1.25rem;background:#fff;border-bottom:1px solid #e3e3e8}
+ header a{color:#1b1b1f;text-decoration:none} header .sp{flex:1}
+ main{max-width:56rem;margin:1.5rem auto;padding:0 1.25rem}
+ form.stack{display:grid;gap:.75rem;max-width:22rem} label{display:grid;gap:.25rem;font-size:.9rem}
+ input{padding:.5rem;border:1px solid #bbb;border-radius:6px;font:inherit}
+ button{padding:.5rem .9rem;border:0;border-radius:6px;background:#3b3bd6;color:#fff;font:inherit;cursor:pointer}
+ button.quiet{background:#e8e8ef;color:#1b1b1f}
+ table{border-collapse:collapse;width:100%} th,td{text-align:left;padding:.5rem;border-bottom:1px solid #e3e3e8}
+ .err{background:#fdecec;border:1px solid #f3b4b4;padding:.5rem .75rem;border-radius:6px;margin-bottom:1rem}
+ .ok{background:#e9f7ee;border:1px solid #b3dfc0;padding:.5rem .75rem;border-radius:6px;margin-bottom:1rem}
+</style></head><body>
+<header><a href="/"><strong>Microdrama</strong></a>
+{% if user %}{% if user.role == 'admin' %}<a href="/team">Team</a>{% endif %}<span class="sp"></span>
+<span>{{ user.display_name }}</span>
+<form method="post" action="/auth/logout"><button class="quiet">Sign out</button></form>{% endif %}</header>
+<main>{% block body %}{% endblock %}</main></body></html>

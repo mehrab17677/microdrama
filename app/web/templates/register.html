@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block title %}Ask for access{% endblock %}
+{% block body %}<h1>Ask for access</h1>
+{% for e in errors %}<div class="err">{{ e }}</div>{% endfor %}
+<form class="stack" method="post" action="/auth/register">
+<label>Email<input name="email" type="email" required autocomplete="username"></label>
+<label>Display name<input name="display_name" required></label>
+<label>Password (8 or more characters)<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+<button>Send request</button></form>
+<p>Already approved? <a href="/auth/login">Sign in</a></p>{% endblock %}

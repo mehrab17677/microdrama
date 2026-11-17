@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% block title %}Team{% endblock %}
+{% block body %}<h1>Team</h1>
+<p>Seats used: <strong>{{ seats_used }} of {{ seat_cap }}</strong></p>
+<h2>Pending requests</h2>
+{% if pending %}<table><tr><th>Name</th><th>Email</th><th>Asked</th><th></th></tr>
+{% for u in pending %}<tr><td>{{ u.display_name }}</td><td>{{ u.email }}</td><td>{{ u.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+<td><form method="post" action="/team/{{ u.id }}/approve"><button>Approve</button></form></td></tr>{% endfor %}</table>
+{% else %}<p>No pending requests.</p>{% endif %}
+<h2>Active users</h2>
+<table><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr>
+{% for u in active %}<tr><td>{{ u.display_name }}</td><td>{{ u.email }}</td><td>{{ u.role }}</td>
+<td>{% if u.id != user.id %}<form method="post" action="/team/{{ u.id }}/disable"><button class="quiet">Disable</button></form>{% endif %}</td></tr>{% endfor %}</table>
+{% if disabled %}<h2>Disabled</h2><ul>{% for u in disabled %}<li>{{ u.display_name }} ({{ u.email }})</li>{% endfor %}</ul>{% endif %}
+{% endblock %}

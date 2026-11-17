@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block title %}Sign in{% endblock %}
+{% block body %}<h1>Sign in</h1>
+{% if notice %}<div class="ok">{{ notice }}</div>{% endif %}
+{% for e in errors %}<div class="err">{{ e }}</div>{% endfor %}
+<form class="stack" method="post" action="/auth/login">
+<label>Email<input name="email" type="email" required autocomplete="username"></label>
+<label>Password<input name="password" type="password" required autocomplete="current-password"></label>
+<button>Sign in</button></form>
+<p>No account? <a href="/auth/register">Ask for access</a></p>{% endblock %}
