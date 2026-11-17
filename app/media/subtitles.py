@@ -44,7 +44,8 @@ def line_chunks(text: str, language: str, base: float, line_seconds: float, timi
         for g in groups:
             first, last = timings[pos(g[0])], timings[pos(g[-1])]
             out.append((base + float(first["start"]), base + float(last["end"]) + END_HOLD, " ".join(words[i] for i in g)))
-        return out
+        # the 0.15 s hold must not run into the next chunk of the same line: no two captions overlap
+        return [(st, min(en, out[k + 1][0]) if k + 1 < len(out) else en, tx) for k, (st, en, tx) in enumerate(out)]
     step = line_seconds / len(groups)   # no word timings: spread the chunks evenly
     for k, g in enumerate(groups):
         out.append((base + k * step, base + (k + 1) * step, " ".join(words[i] for i in g)))

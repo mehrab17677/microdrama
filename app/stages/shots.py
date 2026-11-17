@@ -280,7 +280,10 @@ BAD_TEXT_WORDS = ("caption", "subtitle", "on-screen", "on screen", "title card",
 MAX_PROMPT = 1500
 
 
-def request_kind(tier: str, has_lines: bool) -> str:
+def request_kind(tier: str, has_lines: bool, fallback_used: bool = False) -> str:
+    from app.media.routing import method_tier
+
+    tier = method_tier(tier, fallback_used, 1 if has_lines else 0)
     if tier == "B1":
         return "closeup"
     if has_lines and tier in ("B2", "C"):
@@ -311,12 +314,12 @@ def request_material(sid, shot: dict, model_key: str, rules: list[dict]) -> str:
         l = db.fetch_one("select text, emotion from dialogue_lines where id = %s", (lid,))
         lines.append(f'"{l["text"]}" (emotion: {l["emotion"]})')
     return "\n".join(x for x in [
-        f"Target model: {model_key}. Clip type: {request_kind(shot['tier'], bool(lines))} (tier {shot['tier']}).",
+        f"Target model: {model_key}. Clip type: {request_kind(shot['tier'], bool(lines), shot.get('fallback_used', False))} (tier {shot['tier']}).",
         f"Action: {spec['action']}",
         f"Sounds: {', '.join(spec.get('sounds') or []) or 'none'}",
         f"Camera setup: {camera_text(shot, model_key)}",
         ("Line(s) spoken:\n" + "\n".join(lines)) if lines else "",
-        ("Learned rules for this model:\n" + "\n".join(f"- {r['rule_text']}" for r in rules)) if rules else "",
+        ("Rules learned from earlier failures:\n" + "\n".join(f"- {r['rule_text']}" for r in rules)) if rules else "",
     ] if x)
 
 
@@ -324,7 +327,7 @@ def fixture_request(shot: dict, model_key: str) -> "ShotRequest":
     from app.models.shots import ShotRequest
 
     spec = shot["spec"]
-    kind = request_kind(shot["tier"], bool(shot["line_ids"]))
+    kind = request_kind(shot["tier"], bool(shot["line_ids"]), shot.get("fallback_used", False))
     if kind == "closeup":
         return ShotRequest(prompt="She holds the other person's gaze, jaw tight, and breathes in before she speaks.", camera_fixed=True)
     if kind == "speaking":
@@ -342,7 +345,7 @@ def validate_request(sid, shot: dict, req) -> list[str]:
         return ["the prompt is empty"]
     if len(text) > MAX_PROMPT:
         problems.append(f"the prompt is {len(text)} characters; the limit is {MAX_PROMPT}")
-    kind = request_kind(shot["tier"], bool(shot["line_ids"]))
+    kind = request_kind(shot["tier"], bool(shot["line_ids"]), shot.get("fallback_used", False))
     # spoken line text may contain names, so check the prompt with the quoted line text removed
     check = text
     for lid in shot["line_ids"]:

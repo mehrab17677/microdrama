@@ -32,6 +32,7 @@ from app.stages import validation
 from app.vendors import images
 
 PER_SHOT_STEPS = {"keyframes", "requests", "clips", "lipsync"}
+MAX_REPAIR_ROUNDS = 3   # guide 11.5: when round reaches 3, continue to learn
 TERMINAL = ("failed", "discarded")
 
 
@@ -511,30 +512,53 @@ def pre_compile(state):
 
 
 def plan_repairs(state):
-    """Reset failed shots and go round again (guide 11.5). Phase 5 resets every failed shot to a fresh
-    keyframe; the per-failure action table arrives with phase 9. The loop ends after round 2."""
+    """One action per failed shot (guide 11.5, app/qa/repair.py). Reset shots send their episode back to 'rendered'
+    and the round counter goes up; the loop ends when round reaches 3 or nothing was reset. Shots that ran out of
+    attempts become needs_human. Episode-level failures (runtime, continuity) are not auto-repaired."""
+    from app.qa import repair
+
     sid, batch, rnd = _ids(state)
     if _dead(sid):
         return {}
-    failed = common.batch_shots(sid, batch, ("qa_failed",))
-    if not failed or rnd >= 2:
+    if rnd >= MAX_REPAIR_ROUNDS:
         return {}
+    reset = 0
     with db.transaction() as conn:
-        for s in failed:
-            if s["attempts"] + 1 >= int(get_config("max_attempts")):
-                conn.execute("update shots set status = 'needs_human' where id = %s", (s["id"],))
-            else:
-                conn.execute("update shots set status = 'planned', attempts = attempts + 1, keyframe_r2_key = null where id = %s", (s["id"],))
-            conn.execute("update episodes set status = 'rendered' where id = %s", (s["episode_id"],))
-    return {"round": rnd + 1}
+        for s in common.batch_shots(sid, batch, ("qa_failed",)):
+            plan = repair.decide(s, repair.failures(s["id"]), int(get_config("max_attempts")))
+            if plan is None:
+                conn.execute("update shots set status = 'qa_passed' where id = %s", (s["id"],))   # only unscored checks failed
+                continue
+            repair.apply(conn, s, plan)
+            audit.log(conn, None, f"note:repair:{s['episode_number']}:{s['idx']}", sid, {"text": plan["action"]})
+            if plan["reset"]:
+                reset += 1
+                conn.execute("update episodes set status = 'rendered' where id = %s", (s["episode_id"],))
+    return {"round": rnd + 1} if reset else {}
 
 
 def route_plan_repairs(state):
     sid, batch, _ = _ids(state)
     if _dead(sid):
         return END
-    planned = common.batch_shots(sid, batch, ("planned",))
-    return "enq_keyframes" if any(s["tier"] != "INSERT" for s in planned) else "enq_learn"
+    pending = [e for e in common.batch_episodes(sid, batch, ("rendered",))
+               if not db.fetch_one("select 1 from shots where episode_id = %s and status = 'needs_human' limit 1", (e["id"],))]   # a needs_human shot blocks its episode
+    return "enq_keyframes" if pending else "enq_learn"
+
+
+def apply_learning(state):
+    """After the learn jobs: QA is finished for the batch. Episodes become qa_passed (flagged shots stay listed for the gate),
+    then camera counters, rule wins and saved wording are updated (app/stages/learning.py)."""
+    from app.stages import learning
+
+    sid, batch, _ = _ids(state)
+    if _dead(sid):
+        return {}
+    db.execute(
+        "update episodes set status = 'qa_passed' where series_id = %s and batch = %s and (status = 'compiled' or (status = 'rendered' and exists"
+        " (select 1 from shots s where s.episode_id = episodes.id and s.status = 'needs_human')))", (sid, batch))
+    learning.apply_learning(sid, batch)
+    return {}
 
 
 def after_learn(state):
@@ -695,7 +719,9 @@ def build_production_graph() -> StateGraph:
     add_step(g, "qa", "qa", W.qa_items, "plan_repairs")
     g.add_node("plan_repairs", plan_repairs)
     g.add_conditional_edges("plan_repairs", route_plan_repairs)
-    add_step(g, "learn", "qa", W.learn_items, after_learn)
+    add_step(g, "learn", "qa", W.learn_items, "apply_learning")
+    g.add_node("apply_learning", apply_learning)
+    g.add_conditional_edges("apply_learning", after_learn)
 
     # --- decisions and delivery
     g.add_node("prepare_gate4", make_prepare_gate(4, "The pilot is ready for your review.", "/productions/{id}/review/episodes", before_review_gate))

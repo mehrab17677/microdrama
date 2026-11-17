@@ -31,7 +31,7 @@ def env(db_url, monkeypatch, tmp_path):
     monkeypatch.setenv("MEDIA_TMP_DIR", str(tmp_path))
     migrate.apply_migrations(db_url)
     with db.connect(db_url) as conn:
-        conn.execute("truncate users, audit_log, alerts, series, jobs, cost_log, graph_commands, config, genres, sources, camera_setups cascade")
+        conn.execute("truncate users, audit_log, alerts, series, jobs, cost_log, graph_commands, config, genres, sources, camera_setups, learned_rules cascade")
         conn.commit()
     seed_config.seed(db_url)
     db.execute("update config set value = '5'::jsonb where key = 'dryrun_episode_count'")   # 3 pilot + 2 full episodes

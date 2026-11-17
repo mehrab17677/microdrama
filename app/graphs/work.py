@@ -9,7 +9,7 @@ from app.config import get_config
 from app.graphs import common
 from app.graphs.steps import WorkItem
 from app.media import costs
-from app.media.routing import MODEL_KEY_BY_TIER, needs_lipsync
+from app.media.routing import method_tier, model_key, needs_lipsync
 from app.models.enums import JobKind, Vendor
 from app.stages import look
 from app.vendors import eleven, falmedia, images
@@ -195,7 +195,7 @@ def keyframe_items(sid, batch, rnd) -> list[WorkItem]:
 
 def shot_request_items(sid, batch, rnd) -> list[WorkItem]:
     return [
-        WorkItem(JobKind.llm_shot_request, ANTHROPIC, {"shot_id": str(s["id"]), "attempts": s["attempts"], "model_key": MODEL_KEY_BY_TIER[s["tier"]]},
+        WorkItem(JobKind.llm_shot_request, ANTHROPIC, {"shot_id": str(s["id"]), "attempts": s["attempts"], "model_key": model_key(s["tier"], s["fallback_used"], s["line_count"])},
                  episode_id=s["episode_id"], shot_id=s["id"])
         for s in _batch_shots(sid, batch, ("keyframe_ready",)) if s["tier"] != "INSERT"
     ]
@@ -208,13 +208,13 @@ def planned_video_cost(sid, batch) -> float:
     """The batch budget: every clip and lip-sync step, one attempt each (guide 7.5)."""
     total = 0.0
     for s in db.fetch_all(
-        "select s.tier, s.planned_duration, s.render_duration, cardinality(s.line_ids) line_count from shots s join episodes e on e.id = s.episode_id"
+        "select s.tier, s.fallback_used, s.planned_duration, s.render_duration, cardinality(s.line_ids) line_count from shots s join episodes e on e.id = s.episode_id"
         " where s.series_id = %s and e.batch = %s", (sid, batch),
     ):
         if s["planned_duration"] is None:
             continue
-        total += costs.shot_clip_cost(s["tier"], float(s["planned_duration"]), s["render_duration"], s["line_count"])
-        total += costs.shot_lipsync_cost(s["tier"], s["line_count"], s["render_duration"])
+        total += costs.shot_clip_cost(s["tier"], float(s["planned_duration"]), s["render_duration"], s["line_count"], s["fallback_used"])
+        total += costs.shot_lipsync_cost(s["tier"], s["line_count"], s["render_duration"], s["fallback_used"])
     return round(total, 6)
 
 
@@ -228,10 +228,11 @@ def clip_items(sid, batch, rnd) -> list[WorkItem]:
             continue
         prompt = _latest_prompt(s["id"], s["attempts"])
         audio_key = f"series/{sid}/episodes/{s['episode_number']:02d}/shots/{s['idx']}/shot_audio.mp3"
-        req = media_requests.video_request(s["tier"], {"id": str(s["id"]), "keyframe_r2_key": s["keyframe_r2_key"], "render_duration": s["render_duration"],
+        mt = method_tier(s["tier"], s["fallback_used"], s["line_count"])
+        req = media_requests.video_request(mt, {"id": str(s["id"]), "keyframe_r2_key": s["keyframe_r2_key"], "render_duration": s["render_duration"],
                                                         "attempts": s["attempts"], "line_count": s["line_count"]}, prompt["prompt"], prompt["camera_fixed"], audio_key)
-        cost = costs.shot_clip_cost(s["tier"], float(s["planned_duration"]), s["render_duration"], s["line_count"])
-        items.append(WorkItem(JobKind.video_clip, FAL, {"tier": s["tier"], "shot_id": str(s["id"]), "attempt": s["attempts"], "endpoint": req["endpoint"], "arguments": req["arguments"], "shot_audio_key": audio_key},
+        cost = costs.shot_clip_cost(s["tier"], float(s["planned_duration"]), s["render_duration"], s["line_count"], s["fallback_used"])
+        items.append(WorkItem(JobKind.video_clip, FAL, {"tier": mt, "shot_id": str(s["id"]), "attempt": s["attempts"], "endpoint": req["endpoint"], "arguments": req["arguments"], "shot_audio_key": audio_key},
                               endpoint=req["endpoint"], episode_id=s["episode_id"], shot_id=s["id"], budget_class="video", estimated_cost=cost))
     return items
 
@@ -249,11 +250,11 @@ def lipsync_items(sid, batch, rnd) -> list[WorkItem]:
 
     items = []
     for s in _batch_shots(sid, batch, ("rendered", "syncing")):
-        if not needs_lipsync(s["tier"], s["line_count"]):
+        if not needs_lipsync(s["tier"], s["line_count"], s["fallback_used"]):
             continue
         audio_key = f"series/{sid}/episodes/{s['episode_number']:02d}/shots/{s['idx']}/shot_audio.mp3"
         req = media_requests.lipsync_request(s["raw_clip_r2_key"], audio_key)
-        cost = costs.shot_lipsync_cost(s["tier"], s["line_count"], s["render_duration"])
+        cost = costs.shot_lipsync_cost(s["tier"], s["line_count"], s["render_duration"], s["fallback_used"])
         items.append(WorkItem(JobKind.lipsync, FAL, {"shot_id": str(s["id"]), "sync_attempt": s["sync_attempts"], "endpoint": req["endpoint"], "arguments": req["arguments"]},
                               endpoint=req["endpoint"], episode_id=s["episode_id"], shot_id=s["id"], budget_class="video", estimated_cost=cost))
     return items

@@ -21,23 +21,25 @@ def shot_video(clip: Path, planned: float, out: Path) -> None:
     ffmpeg.run(["-i", str(clip), "-t", f"{planned:.3f}", "-vf", vf, "-an", "-c:v", "libx264", "-preset", preset(), "-crf", "18", str(out)])
 
 
-def shot_audio_wav(planned: float, out: Path, *, speech: Path | None = None, clip: Path | None = None, ambience: Path | None = None, ambience_db: float = -24) -> None:
+def shot_audio_wav(planned: float, out: Path, *, speech: Path | None = None, clip: Path | None = None, ambience: Path | None = None, ambience_db: float = -24,
+                   gain_db: float = 0.0) -> None:
     """A WAV of exactly `planned` seconds, 48 kHz stereo.
     speaking: speech mixed with the looped, lowered ambience. non-speaking: the clip's own audio (silence if none).
     static insert: the ambience or silence."""
     fmt = "aformat=sample_rates=48000:channel_layouts=stereo"
+    main = fmt + (f",volume={gain_db}dB" if gain_db else "")   # the clipping repair lowers the speech (or the clip's own sound), not the ambience
     tail = f"apad=whole_dur={planned:.3f},atrim=0:{planned:.3f}"
     args: list[str] = []
     if speech is not None:
         args += ["-i", str(speech)]
         if ambience is not None:
             args += ["-stream_loop", "-1", "-i", str(ambience)]
-            graph = f"[0:a]{fmt}[s];[1:a]{fmt},volume={ambience_db}dB[a];[s][a]amix=inputs=2:duration=first:normalize=0,{tail}[o]"
+            graph = f"[0:a]{main}[s];[1:a]{fmt},volume={ambience_db}dB[a];[s][a]amix=inputs=2:duration=first:normalize=0,{tail}[o]"
         else:
-            graph = f"[0:a]{fmt},{tail}[o]"
+            graph = f"[0:a]{main},{tail}[o]"
     elif clip is not None and ffmpeg.probe(clip)["has_audio"]:
         args += ["-i", str(clip)]
-        graph = f"[0:a]{fmt},{tail}[o]"
+        graph = f"[0:a]{main},{tail}[o]"
     elif ambience is not None:
         args += ["-stream_loop", "-1", "-i", str(ambience)]
         graph = f"[0:a]{fmt},volume={ambience_db}dB,{tail}[o]"

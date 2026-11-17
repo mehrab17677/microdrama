@@ -15,7 +15,7 @@ from app.config import dry_run, get_config
 from app.graphs import common, work
 from app.jobs.errors import PermanentError
 from app.media import compile as media_compile, ffmpeg, requests as media_requests, subtitles
-from app.media.routing import MODEL_KEY_BY_TIER, needs_lipsync
+from app.media.routing import method_tier, model_key as route_model_key, needs_lipsync
 from app.models.shots import ShotList, ShotRequest
 from app.qa import face
 from app.stages import look, shots as shots_stage, story
@@ -222,13 +222,15 @@ def look_handlers_real_faces() -> bool:
 def llm_shot_request(job: dict) -> dict:
     sid = job["series_id"]
     shot = _shot(job)
-    model_key = job["request"].get("model_key") or MODEL_KEY_BY_TIER[shot["tier"]]
+    model_key = job["request"].get("model_key") or route_model_key(shot["tier"], shot["fallback_used"], shot["line_count"])
     rules, rule_usage = shots_stage.learned_rules(sid, model_key, shot["spec"]["action"])
     material = shots_stage.request_material(sid, shot, model_key, rules)
     out, usage = llm.complete("compiler", shots_stage.REQUEST_INSTRUCTIONS, [{"role": "user", "content": material + story.notes_block(job)}], schema=ShotRequest,
                               fixture=lambda: shots_stage.fixture_request(shot, model_key))
     _fail_if(shots_stage.validate_request(sid, shot, out))
-    return _result([rule_usage, usage], prompt=out.prompt.strip(), camera_fixed=out.camera_fixed, rules_used=[str(r["id"]) for r in rules])
+    if rules:   # reading a rule counts as a hit (guide 11.6)
+        db.execute("update learned_rules set hits = hits + 1 where id = any(%s)", ([r["id"] for r in rules],))
+    return _result([rule_usage, usage], prompt=out.prompt.strip(), camera_fixed=out.camera_fixed, rule_ids=[str(r["id"]) for r in rules])
 
 
 # ---------------------------------------------------------------- clips and lip-sync
@@ -259,7 +261,7 @@ class VideoClip:
     def submit(job):
         sid, req = job["series_id"], job["request"]
         shot = _shot(job)
-        if shot["tier"] == "B1":   # the avatar endpoint takes the audio: its length is the planned length
+        if method_tier(shot["tier"], shot["fallback_used"], shot["line_count"]) == "B1":   # the avatar endpoint takes the audio: its length is the planned length
             build_and_store_shot_audio(sid, shot, float(shot["planned_duration"]))
         return falmedia.submit(job["endpoint"], media_requests.resolve_keys(req["arguments"]))
 
@@ -276,7 +278,7 @@ class VideoClip:
             if (info["width"], info["height"]) != (1080, 1920):   # not a failure: the compile scales and pads
                 conn.execute("insert into qa_results (series_id, episode_id, shot_id, qa_round, check_name, passed, detail) values (%s, %s, %s, 'precheck', 'resolution', false, %s)",
                              (job["series_id"], shot["episode_id"], shot["id"], Jsonb(info)))
-            if needs_lipsync(shot["tier"], shot["line_count"]):
+            if needs_lipsync(shot["tier"], shot["line_count"], shot["fallback_used"]):
                 conn.execute("update shots set raw_clip_r2_key = %s, status = 'rendered' where id = %s", (key, shot["id"]))
             else:
                 conn.execute("update shots set raw_clip_r2_key = %s, final_clip_r2_key = %s, status = 'ready' where id = %s", (key, key, shot["id"]))
@@ -350,6 +352,7 @@ def ffmpeg_compile(job: dict) -> dict:
         videos, wavs, caption_shots, start = [], [], [], 0.0
         for s in shots:
             planned, n = float(s["planned_duration"]), s["idx"]
+            gain = float(s["spec"].get("audio_gain_db", 0))   # set by the clipping repair
             clip = work_dir / f"clip{n}.mp4"
             storage.get_to_file(s["final_clip_r2_key"], clip)
             v, a = work_dir / f"v{n}.mp4", work_dir / f"a{n}.wav"
@@ -367,12 +370,12 @@ def ffmpeg_compile(job: dict) -> dict:
                     files.append(f)
                 speech = work_dir / f"speech{n}.mp3"
                 ffmpeg.build_shot_audio(files, [float(r["duration_seconds"]) for r in rows], timing, max(planned, ffmpeg.LIPSYNC_AUDIO_SECONDS[0]), speech)
-                media_compile.shot_audio_wav(planned, a, speech=speech, ambience=amb, ambience_db=ambience_db)
+                media_compile.shot_audio_wav(planned, a, speech=speech, ambience=amb, ambience_db=ambience_db, gain_db=gain)
                 caption_shots.append({"start": start, "lines": [{"text": r["text"], "duration": float(r["duration_seconds"]), "words": (r["alignment"] or {}).get("words")} for r in rows]})
             elif s["tier"] == "INSERT":
                 media_compile.shot_audio_wav(planned, a, ambience=amb, ambience_db=ambience_db)
             else:
-                media_compile.shot_audio_wav(planned, a, clip=clip)
+                media_compile.shot_audio_wav(planned, a, clip=clip, gain_db=gain)
             videos.append(v)
             wavs.append(a)
             start += planned

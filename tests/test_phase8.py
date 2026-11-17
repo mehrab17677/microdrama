@@ -180,7 +180,7 @@ def test_captions_use_chunks_of_four_bangla_words_or_five_english_words():
 def test_caption_times_come_from_the_word_timings_or_spread_evenly():
     words = [{"w": f"x{i}", "start": i * 0.5, "end": i * 0.5 + 0.4} for i in range(8)]
     a, b = subtitles.line_chunks(" ".join(f"w{i}" for i in range(8)), "bn", 10.0, 4.0, words)
-    assert a[:2] == (10.0, pytest.approx(10.0 + 1.5 + 0.4 + 0.15)) and b[0] == pytest.approx(12.0)
+    assert a[:2] == (10.0, pytest.approx(12.0)) and b[0] == pytest.approx(12.0)      # 1.9 + 0.15 hold is clamped to the next chunk start
     even = subtitles.line_chunks(" ".join(f"w{i}" for i in range(8)), "bn", 10.0, 4.0, None)
     assert [(round(s, 2), round(e, 2)) for s, e, _ in even] == [(10.0, 12.0), (12.0, 14.0)]
     short = subtitles.line_chunks("a b c d e f", "bn", 0, 3.0, [{"w": "ab", "start": 0, "end": 1}, {"w": "cd", "start": 1, "end": 2}, {"w": "ef", "start": 2, "end": 3}])   # respelling has fewer words
@@ -320,7 +320,7 @@ def test_the_compiler_gets_the_camera_text_for_its_model_and_the_nearest_rules(e
     out = B.llm_shot_request({**job_for(sid, "llm_shot_request", ep["id"], model_key="seedance_1_5_pro"), "shot_id": a["id"]})
     body = seen[-1].messages[0]["content"]
     assert "slow dolly in, shallow focus" in body and "Rule number 0." in body and "Rule number 1." in body and "Rule number 2." not in body
-    assert seen[-1].role == "compiler" and out["prompt"].endswith("No music. No speech.") and len(out["rules_used"]) == 2
+    assert seen[-1].role == "compiler" and out["prompt"].endswith("No music. No speech.") and len(out["rule_ids"]) == 2
 
 
 # ---------------------------------------------------------------- the whole episode, with the real compile
