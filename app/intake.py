@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import re
+import os
 import uuid
 from dataclasses import dataclass, field
 
@@ -96,6 +97,9 @@ def validate(form: IntakeForm) -> list[str]:
     # 4. language
     if form.language not in ("bn", "en"):
         problems.append("Choose the dialogue language: Bangla or English.")
+    elif form.language == "bn" and os.environ.get("VOICE_BACKEND") == "local":
+        problems.append("Bangla is not available in this test setup: the open-source test voice (VOICE_BACKEND=local) speaks English only. "
+                        "Choose English, or unset VOICE_BACKEND once the ElevenLabs key is configured.")
     # 5. character references
     if not form.char_refs:
         problems.append("Add at least one character reference photo.")

@@ -24,6 +24,10 @@ import httpx
 from PIL import Image, ImageFilter
 
 MODEL_ID_DEFAULT = "stabilityai/sd-turbo"
+# Sheets this backend cannot make: SD-Turbo cannot hold one identity across full-body angles, tight
+# expression close-ups or outfits, and img2img from the prime portrait only changes its look slightly.
+# The pipeline skips these visibly instead of producing near-identical copies (see images.unsupported_pack_kinds).
+UNSUPPORTED_PACK_KINDS = frozenset({"turnaround", "expression", "wardrobe", "pose", "lineup"})
 NATIVE = 512
 TARGET = (1080, 1920)
 _lock = threading.Lock()

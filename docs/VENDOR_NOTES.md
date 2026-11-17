@@ -158,3 +158,8 @@ A library source (short English story, analysed by the model) and a new Bangla s
 | Pack images (turnaround, expression, wardrobe) | 19 s each | free | match to master 0.63, 0.66, 0.74 (floor 0.40) |
 | Line-up, set plate, ambience, voice design x2 | 4 to 19 s | free | all written; review bars show the right names and tags |
 Whole stage about 3 minutes and $0.015 for this slice. With the real image and voice APIs the cost is dominated by images (about 25 per lead character).
+
+### Phase 7 adjustment: sheets follow the plan, limited backends skip sheets
+- `look.pack_prompt`: turnaround, wardrobe and pose are full body head to toe; expression is a tight face close-up; all reference the prime portrait.
+- `images.unsupported_pack_kinds()` (env `SKIP_PACK_KINDS`, `local_sd` default list) filters `work.pack_items`; `pack_check` writes `note:pack_skipped`; Gate 3 page shows the notice.
+- Intake rejects `bn` when `VOICE_BACKEND=local`.

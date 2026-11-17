@@ -32,6 +32,26 @@ TARGET = (1080, 1920)
 _REQUEST_SIZE = {"scale_1152x2048": "1152x2048", "native_1080x1920": "1080x1920", "crop_1024x1536": "1024x1536"}
 
 
+PACK_KINDS = ("turnaround", "expression", "wardrobe", "pose", "lineup")
+
+
+def unsupported_pack_kinds() -> frozenset[str]:
+    """Character-sheet kinds the active image backend cannot make well. The master (prime) portrait is
+    always made. Real OpenAI images support everything. SKIP_PACK_KINDS (comma list, or `none`) overrides."""
+    override = os.environ.get("SKIP_PACK_KINDS")
+    if override is not None:
+        names = {n.strip() for n in override.split(",") if n.strip() and n.strip() != "none"}
+        bad = names - set(PACK_KINDS)
+        if bad:
+            raise PermanentError(f"SKIP_PACK_KINDS names unknown sheet kinds: {sorted(bad)}")
+        return frozenset(names)
+    if os.environ.get("IMAGE_BACKEND") == "local_sd":
+        from app.vendors import local_images
+
+        return local_images.UNSUPPORTED_PACK_KINDS
+    return frozenset()
+
+
 def request_size(mode: str | None = None) -> str:
     mode = mode or get_config("image_size_mode")
     try:

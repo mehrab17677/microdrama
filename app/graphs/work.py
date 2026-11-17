@@ -12,7 +12,7 @@ from app.media import costs
 from app.media.routing import MODEL_KEY_BY_TIER, needs_lipsync
 from app.models.enums import JobKind, Vendor
 from app.stages import look
-from app.vendors import eleven, falmedia
+from app.vendors import eleven, falmedia, images
 
 ANTHROPIC, OPENAI, ELEVEN, FAL, LOCAL = Vendor.anthropic, Vendor.openai, Vendor.elevenlabs, Vendor.fal, Vendor.local
 
@@ -108,15 +108,16 @@ def emotion_group_items(sid, batch, rnd) -> list[WorkItem]:
 def pack_items(sid, batch, rnd) -> list[WorkItem]:
     rev, retry = common.gate_revs(sid, 3), common.count_notes(sid, "pack_retry")
     items: list[WorkItem] = []
+    skip = images.unsupported_pack_kinds()   # sheets the image backend cannot make are skipped, visibly (Gate 3 page)
     chars = db.fetch_all("select * from characters where series_id = %s order by code", (sid,))
     for c in chars:
         outfits = [w["code"] for w in db.fetch_all("select code from wardrobe_items where character_id = %s order by code", (c["id"],))]
         groups = sorted(set((c["emotion_groups"] or {}).values()))
         have = {(a["kind"], _tag_key(a["tags"])) for a in db.fetch_all("select kind, tags from character_assets where character_id = %s", (c["id"],))}
         for spec in look.pack_plan(c["is_lead"], outfits, groups):
-            if (spec["kind"], _tag_key(spec["tags"])) not in have:
+            if spec["kind"] not in skip and (spec["kind"], _tag_key(spec["tags"])) not in have:
                 items.append(WorkItem(JobKind.image_pack, OPENAI, {"character_id": str(c["id"]), "kind": spec["kind"], "tags": spec["tags"], "try": retry, "rev": rev}))
-    if chars and not db.fetch_one("select 1 from character_assets where series_id = %s and kind = 'lineup'", (sid,)):
+    if chars and "lineup" not in skip and not db.fetch_one("select 1 from character_assets where series_id = %s and kind = 'lineup'", (sid,)):
         items.append(WorkItem(JobKind.image_pack, OPENAI, {"character_id": None, "kind": "lineup", "tags": {}, "try": retry, "rev": rev}))
     for s in db.fetch_all("select id, code, time_of_day from sets where series_id = %s and plate_r2_key is null order by code, time_of_day", (sid,)):
         items.append(WorkItem(JobKind.image_set_plate, OPENAI, {"set_id": str(s["id"]), "rev": rev}))

@@ -2,6 +2,8 @@
 {% block body %}
 <h1>{{ s.title }}: the look</h1>
 <p><a href="/productions/{{ s.id }}">← Production</a></p>
+{% if skipped_kinds %}<p class="err" style="padding:.4rem .6rem"><strong>Skipped for this run:</strong> the image backend in use cannot make these character sheets: {{ skipped_kinds|join(', ') }}.
+Only the master (prime) portrait exists for each character. Later stages build their references from the master portrait.</p>{% endif %}
 {% if at_gate and can_decide %}
 <form id="decide" method="post" action="/productions/{{ s.id }}/gate/3">
 <input type="hidden" name="voices" value="{{ voices_json }}">

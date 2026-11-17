@@ -26,3 +26,4 @@ def _no_real_r2(monkeypatch):
     monkeypatch.delenv("IMAGE_BACKEND", raising=False)      # tests use fixtures, never real generation
     monkeypatch.delenv("EMBEDDING_BACKEND", raising=False)
     monkeypatch.delenv("VOICE_BACKEND", raising=False)
+    monkeypatch.delenv("SKIP_PACK_KINDS", raising=False)

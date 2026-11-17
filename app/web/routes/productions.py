@@ -118,6 +118,7 @@ def _media(series_id, key: str | None) -> str | None:
 def review_look(request: Request, series_id: uuid.UUID, user: dict = Depends(get_current_user)):
     """Gate 3 review: each character's pack beside the reference photo, set plates, and a voice sample per speaking character."""
     from app.stages import look as look_stage
+    from app.vendors import images
 
     s = db.fetch_one("select s.*, u.display_name owner_name from series s join users u on u.id = s.owner_id where s.id = %s", (series_id,))
     if s is None:
@@ -144,7 +145,7 @@ def review_look(request: Request, series_id: uuid.UUID, user: dict = Depends(get
     can_decide = user["role"] == "admin" or s["owner_id"] == user["id"]
     return templates.TemplateResponse(request, "review_look.html", {
         "user": user, "s": s, "characters": characters, "lineup": lineup and {**lineup, "url": _media(series_id, lineup["r2_key_review"])}, "sets": sets,
-        "voices_json": json.dumps(voices), "at_gate": s["status"] == "waiting_gate" and s["current_stage"] == "gate3", "can_decide": can_decide,
+        "skipped_kinds": sorted(images.unsupported_pack_kinds()), "voices_json": json.dumps(voices), "at_gate": s["status"] == "waiting_gate" and s["current_stage"] == "gate3", "can_decide": can_decide,
     })
 
 

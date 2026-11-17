@@ -152,16 +152,21 @@ VIEW_WORDS = {"full_body_front": "full body, front view", "three_quarter": "thre
 
 
 def pack_prompt(character: dict, kind: str, tags: dict, outfit_description: str | None) -> str:
-    """The text part of a pack image prompt; the master portrait goes in as the reference."""
-    base = f"The same person as the reference portrait. {character['visual_description'].strip()} "
+    """The text part of a pack image prompt. The prime (master) portrait goes in as the reference, so every
+    sheet shows the same person: full-body views for turnaround, wardrobe and pose; tight face close-ups
+    for expressions."""
+    base = f"The same person as the reference prime portrait. {character['visual_description'].strip()} "
     if kind == "turnaround":
-        return base + f"Character turnaround sheet pose: {ANGLE_WORDS.get(tags.get('angle'), tags.get('angle', 'front view'))}, full body, standing neutrally, plain background."
+        angle = ANGLE_WORDS.get(tags.get("angle"), tags.get("angle", "front view"))
+        return base + f"Character turnaround: full body from head to toe, {angle}, standing neutrally, arms relaxed, plain light background."
     if kind == "expression":
-        return base + f"Head-and-shoulders portrait showing a {tags.get('emotion_group', 'calm')} expression, plain background."
+        group = str(tags.get("emotion_group", "calm")).replace("_", " ")
+        return base + f"Tight close-up of the face, filling the frame, showing a {group} expression, plain background."
     if kind == "wardrobe":
-        return base + f"Wearing: {outfit_description or tags.get('outfit', '')}. {VIEW_WORDS.get(tags.get('view'), tags.get('view', ''))}, plain background."
+        view = VIEW_WORDS.get(tags.get("view"), tags.get("view", "front view"))
+        return base + f"Full body from head to toe wearing: {outfit_description or tags.get('outfit', '')}. {view}, plain background."
     if kind == "pose":
-        return base + f"Full body, {str(tags.get('pose', 'standing')).replace('_', ' ')} pose, plain background."
+        return base + f"Full body from head to toe, {str(tags.get('pose', 'standing')).replace('_', ' ')} pose, plain background."
     raise ValueError(f"unknown pack kind {kind!r}")
 
 

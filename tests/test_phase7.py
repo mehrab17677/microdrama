@@ -152,9 +152,9 @@ def test_pack_prompts_use_the_master_as_the_reference(env, monkeypatch):
     for kind, tags in (("turnaround", {"angle": "three_quarter_left"}), ("expression", {"emotion_group": "anger"}), ("wardrobe", {"outfit": "W01", "view": "full_body_front"}), ("pose", {"pose": "arms_crossed"})):
         run(L.image_pack, sid, "image_pack", character_id=str(c1["id"]), kind=kind, tags=tags, **{"try": 0}, rev=0)
     prompts = [c.prompt for c in seen]
-    assert all(c.references == [master_bytes] for c in seen) and all(p.startswith("The same person as the reference portrait.") for p in prompts)
+    assert all(c.references == [master_bytes] for c in seen) and all(p.startswith("The same person as the reference prime portrait.") for p in prompts)
     assert "three-quarter view turned to the left" in prompts[0] and "anger expression" in prompts[1]
-    assert "Wearing: Dark jacket over a cream blouse." in prompts[2] and "full body, front view" in prompts[2] and "arms crossed pose" in prompts[3]
+    assert "wearing: Dark jacket over a cream blouse." in prompts[2] and "full body, front view" in prompts[2] and "arms crossed pose" in prompts[3]
     rows = db.fetch_all("select kind, tags, face_vector is not null has_vec from character_assets where kind <> 'master' order by created_at")
     assert [r["kind"] for r in rows] == ["turnaround", "expression", "wardrobe", "pose"] and all(r["has_vec"] for r in rows)         # dry run: the master's face
 
@@ -413,3 +413,76 @@ def test_images_sent_to_the_model_are_labelled_with_their_real_type():
         assert block["image_url"]["url"].startswith(f"data:{expected};base64,"), fmt
         assert base64.b64decode(block["image_url"]["url"].split(",", 1)[1]) == buf.getvalue()
     assert llm._image_block("https://example.com/x.png") == {"type": "image_url", "image_url": {"url": "https://example.com/x.png"}}
+
+
+# ---------------------------------------------------------------- character sheets follow the plan; limited backends skip sheets
+
+def test_sheet_prompts_are_full_body_for_angles_and_close_up_for_expressions():
+    c = {"visual_description": "A woman in her late twenties."}
+    for angle in ("front", "three_quarter_left", "three_quarter_right", "profile", "back"):
+        p = look.pack_prompt(c, "turnaround", {"angle": angle}, None)
+        assert "full body from head to toe" in p and look.ANGLE_WORDS[angle] in p and "reference prime portrait" in p
+    p = look.pack_prompt(c, "expression", {"emotion_group": "deep_sadness"}, None)
+    assert "Tight close-up of the face" in p and "deep sadness expression" in p and "full body" not in p
+    assert "Full body from head to toe wearing: A grey coat." in look.pack_prompt(c, "wardrobe", {"outfit": "W01", "view": "three_quarter"}, "A grey coat.")
+    assert "Full body from head to toe, arms crossed pose" in look.pack_prompt(c, "pose", {"pose": "arms_crossed"}, None)
+
+
+def test_unsupported_pack_kinds_follow_the_backend(monkeypatch):
+    assert images.unsupported_pack_kinds() == frozenset()                       # real images make every sheet
+    monkeypatch.setenv("IMAGE_BACKEND", "local_sd")
+    assert images.unsupported_pack_kinds() == {"turnaround", "expression", "wardrobe", "pose", "lineup"}
+    monkeypatch.setenv("SKIP_PACK_KINDS", "pose, lineup")                       # the override wins
+    assert images.unsupported_pack_kinds() == {"pose", "lineup"}
+    monkeypatch.setenv("SKIP_PACK_KINDS", "none")
+    assert images.unsupported_pack_kinds() == frozenset()
+    monkeypatch.setenv("SKIP_PACK_KINDS", "poses")
+    with pytest.raises(PermanentError, match="unknown sheet kinds"):
+        images.unsupported_pack_kinds()
+
+
+def test_skipped_sheets_are_not_planned_but_the_master_and_voices_still_are(env, monkeypatch):
+    from app.graphs import work
+
+    sid = start(client())
+    look_ready(sid)
+    make_master(sid)
+    make_master(sid, "CH02")
+    db.execute("update characters set emotion_groups = %s where series_id = %s", (json.dumps({"joy": "calm", "rage": "anger"}), sid))
+    full = [i.request["kind"] for i in work.pack_items(sid, "", 0) if str(i.kind) == "image_pack"]
+    assert {"turnaround", "expression", "wardrobe", "pose", "lineup"} <= set(full)
+    monkeypatch.setenv("SKIP_PACK_KINDS", "turnaround,expression,wardrobe,pose,lineup")
+    left = [i.kind for i in work.pack_items(sid, "", 0)]
+    assert "image_pack" not in [str(k) for k in left]
+    assert any(str(k) == "image_set_plate" for k in left) and any(str(k) == "voice_design" for k in left)
+    monkeypatch.setenv("SKIP_PACK_KINDS", "pose")                                # only the named kind goes
+    kinds = {i.request["kind"] for i in work.pack_items(sid, "", 0) if str(i.kind) == "image_pack"}
+    assert "pose" not in kinds and "turnaround" in kinds
+
+
+def test_a_run_with_skipped_sheets_reaches_gate3_and_says_so(runner, monkeypatch):
+    monkeypatch.setenv("SKIP_PACK_KINDS", "turnaround,expression,wardrobe,pose,lineup")
+    c = client()
+    sid = start(c)
+    to_gate(runner, c, sid, 3)
+    assert {r["kind"] for r in db.fetch_all("select distinct kind from character_assets where series_id = %s", (sid,))} == {"master", "voice_sample"}
+    assert db.fetch_one("select count(*) n from audit_log where series_id = %s and action = 'note:pack_skipped'", (sid,))["n"] == 1
+    page = c.get(f"/productions/{sid}/review/look").text
+    assert "Skipped for this run" in page and "turnaround" in page and "Master portrait" in page
+    assert "Skipped for this run" not in _page_without_skips(c, sid, monkeypatch)
+
+
+def _page_without_skips(c, sid, monkeypatch):
+    monkeypatch.delenv("SKIP_PACK_KINDS")
+    return c.get(f"/productions/{sid}/review/look").text
+
+
+def test_bangla_is_supported_but_refused_up_front_with_the_local_test_voice(env, monkeypatch):
+    c = client()
+    data, files = brief()
+    assert c.post("/productions", data=data, files=files, headers={"accept": "application/json"}).status_code == 303       # bn is fine with real voices
+    monkeypatch.setenv("VOICE_BACKEND", "local")
+    r = c.post("/productions", data=data, files=files, headers={"accept": "application/json"})
+    assert r.status_code == 400 and "Bangla is not available in this test setup" in r.text
+    data["language"] = "en"
+    assert c.post("/productions", data=data, files=files, headers={"accept": "application/json"}).status_code == 303

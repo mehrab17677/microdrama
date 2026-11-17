@@ -29,6 +29,7 @@ from app.models.enums import AlertKind
 from app.qa import face
 from app.stages import look as look_stage
 from app.stages import validation
+from app.vendors import images
 
 PER_SHOT_STEPS = {"keyframes", "requests", "clips", "lipsync"}
 TERMINAL = ("failed", "discarded")
@@ -305,6 +306,10 @@ def pack_check(state):
     sid, _, _ = _ids(state)
     if _dead(sid):
         return {}
+    skipped = sorted(images.unsupported_pack_kinds())
+    if skipped and not common.count_notes(sid, "pack_skipped"):
+        with db.transaction() as conn:
+            audit.log(conn, None, "note:pack_skipped", sid, {"text": "Character sheets skipped (image backend cannot make them): " + ", ".join(skipped)})
     floor = get_config("qa_thresholds")["pack_match_min"]
     masters = {r["character_id"]: _vec(r["fv"]) for r in db.fetch_all(
         "select character_id, face_vector::text fv from character_assets where series_id = %s and kind = 'master' and face_vector is not null", (sid,))}
