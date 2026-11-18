@@ -10,6 +10,7 @@ from app.web.deps import get_current_user
 from app.web.routes import auth as auth_routes
 from app.web.routes import library as library_routes
 from app.web.routes import media as media_routes
+from app.web.routes import pages as pages_routes
 from app.web.routes import productions as production_routes
 from app.web.routes import team as team_routes
 from app.web.routes import webhooks as webhook_routes
@@ -32,6 +33,7 @@ app.include_router(team_routes.router)
 app.include_router(library_routes.router)
 app.include_router(media_routes.router)
 app.include_router(production_routes.router)
+app.include_router(pages_routes.router)
 app.include_router(webhook_routes.router)
 
 
@@ -48,9 +50,3 @@ async def http_error(request: Request, exc: HTTPException):
 @app.get("/healthz")
 def healthz() -> dict:
     return {"ok": True}
-
-
-@app.get("/", response_class=HTMLResponse)
-def home(request: Request, user: dict = Depends(get_current_user)):
-    # Placeholder until the dashboard (Phase 10).
-    return templates.TemplateResponse(request, "home.html", {"user": user})

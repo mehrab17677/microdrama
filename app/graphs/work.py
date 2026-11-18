@@ -17,6 +17,12 @@ from app.vendors import eleven, falmedia, images
 ANTHROPIC, OPENAI, ELEVEN, FAL, LOCAL = Vendor.anthropic, Vendor.openai, Vendor.elevenlabs, Vendor.fal, Vendor.local
 
 
+def _fb(shot: dict) -> dict:
+    """The feedback item that sent this shot back for rework goes into every job request, so the ledger key is new (guide 12.6)."""
+    fid = (shot.get("spec") or {}).get("feedback_id")
+    return {"fb": fid} if fid else {}
+
+
 def _digest(parts) -> str:
     return hashlib.sha1("|".join(map(str, parts)).encode()).hexdigest()[:12]
 
@@ -150,7 +156,8 @@ def audio_tag_items(sid, batch, rnd) -> list[WorkItem]:
     for e in common.batch_episodes(sid, batch):
         lines = db.fetch_all("select id, version from dialogue_lines where episode_id = %s and audio_tag is null order by idx", (e["id"],))
         if lines:
-            items.append(WorkItem(JobKind.llm_audio_tag, OPENAI, {"purpose": "line_tags", "episode": e["number"], "lines": _digest(f"{l['id']}:{l['version']}" for l in lines)}, episode_id=e["id"]))
+            items.append(WorkItem(JobKind.llm_audio_tag, OPENAI, {"purpose": "line_tags", "episode": e["number"], "lines": _digest(f"{l['id']}:{l['version']}" for l in lines),
+                                                                                  **({"note": note} if (note := common.latest_note(sid, f"voice_note:{e['number']}")) else {})}, episode_id=e["id"]))
     return items
 
 
@@ -182,20 +189,20 @@ def keyframe_items(sid, batch, rnd) -> list[WorkItem]:
     items, queued_keys = [], set()
     for s in shots:
         key = keyframe_cache_key(s["spec"])
-        if s["attempts"] == 0:
+        if s["attempts"] == 0 and not _fb(s):   # a repaired shot or one sent back by feedback is always drawn again
             if key in done:
                 db.execute("update shots set keyframe_r2_key = %s, status = 'keyframe_ready' where id = %s", (done[key], s["id"]))
                 continue
             if key in queued_keys:
                 continue  # the representative's job will link this shot when it finishes
             queued_keys.add(key)
-        items.append(WorkItem(JobKind.image_keyframe, OPENAI, {"shot_id": str(s["id"]), "attempt": s["attempts"], "cache_key": key}, episode_id=s["episode_id"], shot_id=s["id"]))
+        items.append(WorkItem(JobKind.image_keyframe, OPENAI, {"shot_id": str(s["id"]), "attempt": s["attempts"], "cache_key": key, **_fb(s)}, episode_id=s["episode_id"], shot_id=s["id"]))
     return items
 
 
 def shot_request_items(sid, batch, rnd) -> list[WorkItem]:
     return [
-        WorkItem(JobKind.llm_shot_request, ANTHROPIC, {"shot_id": str(s["id"]), "attempts": s["attempts"], "model_key": model_key(s["tier"], s["fallback_used"], s["line_count"])},
+        WorkItem(JobKind.llm_shot_request, ANTHROPIC, {"shot_id": str(s["id"]), "attempts": s["attempts"], "model_key": model_key(s["tier"], s["fallback_used"], s["line_count"]), **_fb(s)},
                  episode_id=s["episode_id"], shot_id=s["id"])
         for s in _batch_shots(sid, batch, ("keyframe_ready",)) if s["tier"] != "INSERT"
     ]
@@ -224,7 +231,7 @@ def clip_items(sid, batch, rnd) -> list[WorkItem]:
     items = []
     for s in _batch_shots(sid, batch, ("keyframe_ready", "rendering")):
         if s["tier"] == "INSERT":
-            items.append(WorkItem(JobKind.ffmpeg_insert, LOCAL, {"shot_id": str(s["id"]), "attempt": s["attempts"]}, episode_id=s["episode_id"], shot_id=s["id"]))
+            items.append(WorkItem(JobKind.ffmpeg_insert, LOCAL, {"shot_id": str(s["id"]), "attempt": s["attempts"], **_fb(s)}, episode_id=s["episode_id"], shot_id=s["id"]))
             continue
         prompt = _latest_prompt(s["id"], s["attempts"])
         audio_key = f"series/{sid}/episodes/{s['episode_number']:02d}/shots/{s['idx']}/shot_audio.mp3"
@@ -232,7 +239,7 @@ def clip_items(sid, batch, rnd) -> list[WorkItem]:
         req = media_requests.video_request(mt, {"id": str(s["id"]), "keyframe_r2_key": s["keyframe_r2_key"], "render_duration": s["render_duration"],
                                                         "attempts": s["attempts"], "line_count": s["line_count"]}, prompt["prompt"], prompt["camera_fixed"], audio_key)
         cost = costs.shot_clip_cost(s["tier"], float(s["planned_duration"]), s["render_duration"], s["line_count"], s["fallback_used"])
-        items.append(WorkItem(JobKind.video_clip, FAL, {"tier": mt, "shot_id": str(s["id"]), "attempt": s["attempts"], "endpoint": req["endpoint"], "arguments": req["arguments"], "shot_audio_key": audio_key},
+        items.append(WorkItem(JobKind.video_clip, FAL, {"tier": mt, "shot_id": str(s["id"]), "attempt": s["attempts"], "endpoint": req["endpoint"], "arguments": req["arguments"], "shot_audio_key": audio_key, **_fb(s)},
                               endpoint=req["endpoint"], episode_id=s["episode_id"], shot_id=s["id"], budget_class="video", estimated_cost=cost))
     return items
 
@@ -255,7 +262,7 @@ def lipsync_items(sid, batch, rnd) -> list[WorkItem]:
         audio_key = f"series/{sid}/episodes/{s['episode_number']:02d}/shots/{s['idx']}/shot_audio.mp3"
         req = media_requests.lipsync_request(s["raw_clip_r2_key"], audio_key)
         cost = costs.shot_lipsync_cost(s["tier"], s["line_count"], s["render_duration"], s["fallback_used"])
-        items.append(WorkItem(JobKind.lipsync, FAL, {"shot_id": str(s["id"]), "sync_attempt": s["sync_attempts"], "endpoint": req["endpoint"], "arguments": req["arguments"]},
+        items.append(WorkItem(JobKind.lipsync, FAL, {"shot_id": str(s["id"]), "sync_attempt": s["sync_attempts"], "endpoint": req["endpoint"], "arguments": req["arguments"], **_fb(s)},
                               endpoint=req["endpoint"], episode_id=s["episode_id"], shot_id=s["id"], budget_class="video", estimated_cost=cost))
     return items
 

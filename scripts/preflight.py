@@ -190,6 +190,13 @@ def check_elevenlabs() -> Result:
     import httpx
 
     resp = httpx.get("https://api.elevenlabs.io/v1/models", headers={"xi-api-key": key}, timeout=30)
+    if resp.status_code == 401 and "missing_permissions" in resp.text:
+        # A restricted key can generate without being allowed to read. Prove the key with a request that is rejected for its body (HTTP 422)
+        # after authentication, which costs nothing; the Bengali check then needs a key with models_read or the voice test (guide section 13).
+        probe = httpx.post("https://api.elevenlabs.io/v1/text-to-dialogue/with-timestamps", headers={"xi-api-key": key}, json={}, timeout=30)
+        if probe.status_code == 422:
+            return OK, "key accepted for speech (it lacks models_read, so Bengali on eleven_v3 is NOT verified: run the voice test)"
+        return FAIL, f"key lacks models_read and the speech probe returned HTTP {probe.status_code}"
     if resp.status_code != 200:
         return FAIL, f"models endpoint returned HTTP {resp.status_code}"
     entry = next((m for m in resp.json() if m.get("model_id") == "eleven_v3"), None)

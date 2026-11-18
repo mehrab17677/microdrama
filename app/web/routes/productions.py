@@ -78,13 +78,15 @@ def create_production(
 
 @router.get("/productions/{series_id}", response_class=HTMLResponse)
 def production_page(request: Request, series_id: uuid.UUID, user: dict = Depends(get_current_user)):
+    from app import overview
+
     s = db.fetch_one("select s.*, u.display_name owner_name from series s join users u on u.id = s.owner_id where s.id = %s", (series_id,))
     if s is None:
         raise HTTPException(404, "Production not found.")
     can_decide = user["role"] == "admin" or s["owner_id"] == user["id"]
-    stage_index = STAGES.index(s["current_stage"])
     return templates.TemplateResponse(request, "production.html", {
-        "user": user, "s": s, "can_decide": can_decide, "stages": STAGES, "stage_index": stage_index,
+        "user": user, "s": s, "can_decide": can_decide, "tracker": overview.tracker(s), "episodes": overview.episode_grid(series_id), "spend": overview.spend(series_id),
+        "activity": overview.activity(series_id),
         "gate": int(s["current_stage"][4:]) if s["status"] == "waiting_gate" and s["current_stage"].startswith("gate") else None,
     })
 

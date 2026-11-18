@@ -102,3 +102,43 @@ def decide_pilot(conn, series_id, user_id, decision: str, notes: str = "", categ
     payload = {"type": "gate", "gate": 4, "decision": decision, "notes": notes, "category": category}
     _commit(conn, series_id, user_id, 4, decision, notes, payload)
     return payload
+
+
+def decide_feedback(conn, series_id, user_id, reassemble: list[int] | None = None) -> dict:
+    """Send the confirmed feedback items to the graph (gate 4 or 5, decision 'feedback'), or recompile listed episodes ('reassemble').
+    Gate 4 allows config key pilot_rework_rounds rounds of feedback; after that only continue or discard are offered."""
+    from app import alerts, feedback
+    from app.config import get_config
+    from app.models.enums import AlertKind
+
+    s = conn.execute("select * from series where id = %s for update", (series_id,)).fetchone()
+    if s is None:
+        raise DecisionError(404, "Production not found.")
+    if s["status"] != "waiting_gate" or s["current_stage"] not in ("gate4", "gate5"):
+        raise DecisionError(409, "Feedback can only be sent while the pilot or the final cut waits for your decision.")
+    gate = int(s["current_stage"][4:])
+    if reassemble:
+        numbers = sorted({int(n) for n in reassemble})
+        eps = conn.execute("select number, final_r2_key from episodes where series_id = %s and number = any(%s)", (series_id, numbers)).fetchall()
+        if len(eps) != len(numbers) or any(not e["final_r2_key"] for e in eps):
+            raise DecisionError(400, "Only compiled episodes can be reassembled.")
+        ids = []
+        for n in numbers:   # a recompile is a caption-category item with no shots: the compile step runs again and nothing is rendered
+            row = conn.execute(
+                "insert into feedback_items (series_id, episode_number, start_seconds, end_seconds, note, category, status, created_by) values (%s,%s,0,0,'Reassemble','caption','confirmed',%s) returning id",
+                (series_id, n, user_id)).fetchone()
+            ids.append(str(row["id"]))
+        notes = "reassemble"
+    else:
+        if gate == 4:
+            used = conn.execute("select count(*) n from gate_decisions where series_id = %s and gate = 4 and decision = 'feedback' and coalesce(notes, '') <> 'reassemble'", (series_id,)).fetchone()["n"]
+            if used >= int(get_config("pilot_rework_rounds")):
+                raise DecisionError(400, "The pilot rework rounds are used up. Continue to the full build or discard.")
+        ids = feedback.confirmed_ids(conn, series_id)
+        if not ids:
+            raise DecisionError(400, "Confirm at least one feedback item first.")
+        notes = ""
+    payload = {"type": "gate", "gate": gate, "decision": "feedback", "notes": notes, "feedback_ids": ids}
+    _commit(conn, series_id, user_id, gate, "feedback", notes, payload, {"items": len(ids)})
+    alerts.notify([user_id], AlertKind.action_started, ("Recompile started." if reassemble else f"Rework started on {len(ids)} feedback item(s)."), f"/productions/{series_id}", series_id, conn=conn)
+    return payload

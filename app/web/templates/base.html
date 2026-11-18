@@ -13,9 +13,25 @@
  table{border-collapse:collapse;width:100%} th,td{text-align:left;padding:.5rem;border-bottom:1px solid #e3e3e8}
  .err{background:#fdecec;border:1px solid #f3b4b4;padding:.5rem .75rem;border-radius:6px;margin-bottom:1rem}
  .ok{background:#e9f7ee;border:1px solid #b3dfc0;padding:.5rem .75rem;border-radius:6px;margin-bottom:1rem}
-</style></head><body>
+</style></head><body{% block bodyattrs %}{% endblock %}>
 <header><a href="/"><strong>Microdrama</strong></a>
-{% if user %}<a href="/library">Library</a><a href="/productions/new">New production</a>{% if user.role == 'admin' %}<a href="/team">Team</a>{% endif %}<span class="sp"></span>
+{% if user %}<a href="/library">Library</a><a href="/alerts" id="bell">Alerts{% if unread_alerts(user.id) %} <span style="background:#d33;color:#fff;border-radius:9px;padding:0 .4rem;font-size:.8rem">{{ unread_alerts(user.id) }}</span>{% endif %}</a><a href="/productions/new">New production</a>{% if user.role == 'admin' %}<a href="/team">Team</a>{% endif %}<span class="sp"></span>
 <span>{{ user.display_name }}</span>
 <form method="post" action="/auth/logout"><button class="quiet">Sign out</button></form>{% endif %}</header>
-<main>{% block body %}{% endblock %}</main></body></html>
+<main>{% block body %}{% endblock %}</main>
+{% if user %}<script>
+// Live updates (guide 12.7): one event stream; a progress event reloads the page when it shows the production that changed.
+(function () {
+  try {
+    var shown = Array.prototype.map.call(document.querySelectorAll("[data-series]"), function (n) { return n.getAttribute("data-series"); });
+    var watch = document.querySelector("[data-watch]");
+    var ids = watch && watch.getAttribute("data-watch") ? watch.getAttribute("data-watch").split(",") : shown;
+    var page = document.body.getAttribute("data-production");
+    if (page) ids = [page];
+    var es = new EventSource("/events?series=" + encodeURIComponent(ids.join(",")));
+    var pending = null;
+    es.addEventListener("progress", function () { clearTimeout(pending); pending = setTimeout(function () { if (!document.querySelector("form:focus-within")) location.reload(); }, 600); });
+    es.addEventListener("alert", function () { var b = document.getElementById("bell"); if (b) b.style.fontWeight = "700"; });
+  } catch (e) {}
+})();
+</script>{% endif %}</body></html>

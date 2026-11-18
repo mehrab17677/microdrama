@@ -1,0 +1,59 @@
+{% extends "base.html" %}{% block title %}Review episodes{% endblock %}
+{% block bodyattrs %} data-production="{{ s.id }}"{% endblock %}
+{% block body %}<h1>{{ s.title }}: episodes</h1>
+<p><a href="/productions/{{ s.id }}">← Production</a></p>
+
+<h2>Spend</h2>
+<p>Total cost so far ${{ '%.2f'|format(spend.total_cost) }}; video ${{ '%.2f'|format(spend.video_spent) }}.</p>
+{% if projection %}<p id="projection"><strong>Projection for the full build:</strong> the pilot used ${{ '%.2f'|format(projection.pilot_spend) }} of video for {{ '%.0f'|format(projection.pilot_seconds) }} s
+(${{ '%.3f'|format(projection.per_second) }} per second). {{ projection.remaining_episodes }} more episodes ({{ '%.0f'|format(projection.remaining_seconds) }} s) would add about <strong>${{ '%.2f'|format(projection.projected) }}</strong>.</p>{% endif %}
+
+{% for ep in episodes %}<section class="episode" data-episode="{{ ep.e.number }}" style="border-top:1px solid #ddd;margin-top:1.5rem">
+<h2>Episode {{ ep.e.number }} <small>cut {{ ep.e.cut_version }} · {{ '%.1f'|format(ep.e.runtime_seconds|float) }} s · {{ ep.e.status|replace('_', ' ') }}</small></h2>
+<video class="player" controls playsinline preload="metadata" src="{{ ep.video }}" style="max-height:28rem;background:#000" data-episode="{{ ep.e.number }}"></video>
+{% if gate and can_decide and (gate == 5 or rework_left) %}<p><button type="button" class="quiet mark" data-episode="{{ ep.e.number }}">Mark range</button> <small class="marked" data-episode="{{ ep.e.number }}"></small></p>{% endif %}
+<details><summary>QA report</summary>
+<table>{% for q in ep.qa %}<tr><td>{{ q.check_name|replace('_', ' ') }}</td><td>{{ 'pass' if q.passed else 'FAIL' }}</td><td>{% if q.score is not none %}{{ '%.2f'|format(q.score|float) }}{% endif %}</td></tr>{% endfor %}</table>
+{% if ep.flagged %}<p><strong>Flagged shots</strong></p><ul>{% for f in ep.flagged %}<li>shot {{ f.idx }}: {{ f.check_name }}{% if f.category %} ({{ f.category }}){% endif %}{% if f.category == 'unscored' %}: no lip-sync scorer, please judge by eye{% endif %}</li>{% endfor %}</ul>{% endif %}</details>
+</section>{% else %}<p>No episode is compiled yet.</p>{% endfor %}
+
+<h2>Feedback</h2>
+{% if items %}<table id="feedback">{% for i in items %}<tr data-item="{{ i.id }}"><td>Episode {{ i.episode_number }} ({{ '%02d:%02d'|format(i.start_seconds // 60, i.start_seconds % 60) }}-{{ '%02d:%02d'|format(i.end_seconds // 60, i.end_seconds % 60) }})</td>
+<td>{{ i.note }}<br><small>{{ i.shot_ids|length }} shot(s) · {{ i.author }}{% if i.decline_reason %} · {{ i.decline_reason }}{% endif %}</small></td><td>{{ i.status|replace('_', ' ') }}</td>
+<td>{% if can_decide and i.status in ('received', 'confirmed') %}<form method="post" action="/productions/{{ s.id }}/feedback/{{ i.id }}/confirm" style="display:flex;gap:.3rem">
+<select name="category">{% for c in categories %}<option value="{{ c }}"{% if c == i.category %} selected{% endif %}>{{ c }}</option>{% endfor %}</select><button class="quiet">{{ 'Re-confirm' if i.status == 'confirmed' else 'Confirm' }}</button></form>{% endif %}</td></tr>{% endfor %}</table>
+{% else %}<p>No feedback yet.</p>{% endif %}
+
+{% if gate and can_decide %}
+{% if gate == 5 or rework_left %}<form class="stack" method="post" action="/productions/{{ s.id }}/feedback" style="max-width:36rem"><label>Reference and note, for example: Episode 5 (00:14-00:20) her mouth does not match the words
+<input name="entry" id="entry" placeholder="Episode 1 (00:03-00:08) ..." required></label><button>Add feedback</button></form>
+{% if confirmed %}<form method="post" action="/productions/{{ s.id }}/feedback/send"><button>Send confirmed feedback</button></form>{% endif %}
+{% else %}<p><em>The pilot rework round has been used. Continue to the full build or discard.</em></p>{% endif %}
+
+<h2>Decision</h2>
+{% if gate == 4 %}<form class="stack" method="post" action="/productions/{{ s.id }}/pilot"><label>Notes<input name="notes"></label>
+<label>If discarding, why? (story, look, voice, quality, cost)<input name="category"></label>
+<button name="decision" value="continue">Continue to the full build</button> <button class="quiet" name="decision" value="discard">Discard</button></form>
+{% else %}<form class="stack" method="post" action="/productions/{{ s.id }}/gate/5"><button name="decision" value="approve">Approve the final cut</button></form>{% endif %}
+<form method="post" action="/productions/{{ s.id }}/reassemble" style="margin-top:1rem"><fieldset style="border:1px solid #ddd;border-radius:6px"><legend>Recompile (no new rendering)</legend>
+{% for ep in episodes %}<label style="display:inline-flex;gap:.3rem;margin-right:.8rem"><input type="checkbox" name="episodes" value="{{ ep.e.number }}">Episode {{ ep.e.number }}</label>{% endfor %}<button class="quiet">Reassemble</button></fieldset></form>
+{% endif %}
+
+{% if gate and can_decide and (gate == 5 or rework_left) %}<script>
+// "Mark range": the first press records the current time as the start, the second as the end, and fills the feedback form in the Episode N (MM:SS-MM:SS) format.
+(function () {
+  function mmss(t) { t = Math.max(0, Math.round(t)); return ("0" + Math.floor(t / 60)).slice(-2) + ":" + ("0" + (t % 60)).slice(-2); }
+  var starts = {};
+  document.querySelectorAll("button.mark").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var n = btn.getAttribute("data-episode"), video = document.querySelector("video.player[data-episode='" + n + "']"), label = document.querySelector(".marked[data-episode='" + n + "']");
+      if (starts[n] === undefined) { starts[n] = video.currentTime; label.textContent = "start " + mmss(starts[n]) + ", press again for the end"; return; }
+      var a = starts[n], b = video.currentTime; delete starts[n];
+      if (b <= a) { label.textContent = "the end must be after the start; try again"; return; }
+      var entry = document.getElementById("entry"); entry.value = "Episode " + n + " (" + mmss(a) + "-" + mmss(b) + ") "; entry.focus();
+      label.textContent = "marked " + mmss(a) + "-" + mmss(b);
+    });
+  });
+})();
+</script>{% endif %}
+{% endblock %}

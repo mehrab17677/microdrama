@@ -202,7 +202,7 @@ def image_keyframe(job: dict) -> dict:
     cache_key = work.keyframe_cache_key(spec)
     with db.transaction() as conn:
         conn.execute("update shots set keyframe_r2_key = %s, status = 'keyframe_ready' where id = %s", (key, shot["id"]))
-        if shot["attempts"] == 0:   # shots sharing this cache key take the same keyframe
+        if shot["attempts"] == 0 and not shot["spec"].get("feedback_id"):   # shots sharing this cache key take the same keyframe
             for other in conn.execute("select id, spec from shots where series_id = %s and status = 'planned' and attempts = 0 and tier <> 'INSERT' and id <> %s", (sid, shot["id"])).fetchall():
                 if work.keyframe_cache_key(other["spec"]) == cache_key:
                     conn.execute("update shots set keyframe_r2_key = %s, status = 'keyframe_ready' where id = %s", (key, other["id"]))

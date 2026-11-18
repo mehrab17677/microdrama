@@ -24,7 +24,9 @@ from app.graphs.common import get_series, get_verdict, set_series, set_verdict
 from app.graphs.state import ProductionState
 from app.graphs.steps import enqueue_step
 from app.jobs import ledger
+from app.feedback import STORY_DECLINE
 from app.media import durations
+from app.media.routing import method_tier
 from app.models.enums import AlertKind
 from app.qa import face
 from app.stages import look as look_stage
@@ -607,34 +609,45 @@ def close_discarded(state):
 
 
 def apply_feedback(state):
-    """Map confirmed feedback items to rework (guide 12.6). Items are applied by category; each affected
-    episode goes back to 'rendered' and the item to 'in_progress'."""
-    sid, _, _ = _ids(state)
+    """Rework for confirmed feedback items (guide 12.6), by category. Each affected episode goes back to 'rendered' (or 'shots_planned' when a
+    line is re-voiced, so the durations are fitted again) and each item to 'in_progress'. The item id is stored on its shots (spec.feedback_id)
+    and goes into every job request, so the ledger keys are new. An episode from an earlier batch that is reworked at Gate 5 joins the current batch."""
+    sid, batch, _ = _ids(state)
     ids = ((state.get("last_resume") or {}).get("feedback_ids")) or []
+    from psycopg.types.json import Jsonb
+
     with db.transaction() as conn:
-        for f in conn.execute("select * from feedback_items where series_id = %s and id::text = any(%s) and status = 'confirmed'", (sid, ids)).fetchall():
+        for f in conn.execute("select * from feedback_items where series_id = %s and id::text = any(%s) and status = 'confirmed' order by created_at", (sid, ids)).fetchall():
             cat = f["category"] or "picture"
-            ep = conn.execute("select id from episodes where series_id = %s and number = %s", (sid, f["episode_number"])).fetchone()
+            ep = conn.execute("select id, batch from episodes where series_id = %s and number = %s", (sid, f["episode_number"])).fetchone()
             if cat == "story":
-                conn.execute("update feedback_items set status = 'declined', decline_reason = %s where id = %s",
-                             ("Story changes need a Gate 2 rejection or a new production.", f["id"]))
+                conn.execute("update feedback_items set status = 'declined', decline_reason = %s where id = %s", (STORY_DECLINE, f["id"]))
                 alerts.notify([f["created_by"]], AlertKind.feedback_status, "Story feedback needs a new production.", f"/productions/{sid}", sid, conn=conn)
                 continue
-            shots = conn.execute("select * from shots where id = any(%s)", (f["shot_ids"],)).fetchall()
-            for s in shots:
+            if ep and ep["batch"] != batch:
+                conn.execute("update episodes set batch = %s where id = %s", (batch, ep["id"]))
+            fb = Jsonb({"feedback_id": str(f["id"])})
+            status_for_episode = "rendered"
+            for s in conn.execute("select * from shots where id = any(%s)", (f["shot_ids"],)).fetchall():
                 if cat in ("picture", "brand"):
-                    conn.execute("update shots set status = 'planned', attempts = 0, keyframe_r2_key = null, raw_clip_r2_key = null, final_clip_r2_key = null where id = %s", (s["id"],))
+                    new = "keyframe_ready" if s["tier"] == "INSERT" else "planned"   # an insert has no keyframe: it is rebuilt from the plate
+                    conn.execute("update shots set status = %s, attempts = 0, sync_attempts = 0, fallback_used = false, keyframe_r2_key = null, raw_clip_r2_key = null,"
+                                 " final_clip_r2_key = null, spec = spec || %s where id = %s", (new, fb, s["id"]))
                 elif cat == "lipsync":
-                    new = "rendered" if s["tier"] in ("B2", "C") else "keyframe_ready"
-                    conn.execute("update shots set status = %s, sync_attempts = 0 where id = %s", (new, s["id"]))
+                    new = "rendered" if method_tier(s["tier"], s["fallback_used"], len(s["line_ids"])) in ("B2", "C") else "keyframe_ready"
+                    conn.execute("update shots set status = %s, sync_attempts = 0, spec = spec || %s where id = %s", (new, fb, s["id"]))
                 elif cat == "voice":
                     conn.execute("update dialogue_lines set version = version + 1, audio_r2_key = null, audio_tag = null, duration_seconds = null, alignment = null where id = any(%s)", (s["line_ids"],))
-                    conn.execute("update shots set status = 'keyframe_ready' where id = %s", (s["id"],))
+                    conn.execute("update shots set status = 'keyframe_ready', spec = spec || %s where id = %s", (fb, s["id"]))
+                    status_for_episode = "shots_planned"
+            if cat == "voice":
+                audit.log(conn, None, f"note:voice_note:{f['episode_number']}", sid, {"text": f["note"]})
             if cat == "music" and ep:
                 conn.execute("update episodes set music_r2_key = null where id = %s", (ep["id"],))
-                audit.log(conn, None, "note:music_note:%s" % f["episode_number"], sid, {"text": f["note"]})
+                audit.log(conn, None, f"note:music_note:{f['episode_number']}", sid, {"text": f["note"]})
+            # sound and caption: nothing is rendered again, the compile builds the shot audio and the captions afresh
             if ep:
-                conn.execute("update episodes set status = 'rendered' where id = %s", (ep["id"],))
+                conn.execute("update episodes set status = %s where id = %s", (status_for_episode, ep["id"]))
             conn.execute("update feedback_items set status = 'in_progress' where id = %s", (f["id"],))
             alerts.notify([f["created_by"]], AlertKind.feedback_status, "Your feedback is being worked on.", f"/productions/{sid}", sid, conn=conn)
     set_series(sid, status="running", current_stage="build", waiting_group=None)

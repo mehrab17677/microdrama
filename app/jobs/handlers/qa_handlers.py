@@ -17,7 +17,7 @@ from app.qa import episode as episode_qa, lipsync, shot as shot_qa, vision
 from app.stages import look
 from app.vendors import storage
 
-KINDS = ["qa_shot", "qa_episode", "llm_rule"]
+KINDS = ["qa_shot", "qa_episode", "llm_rule", "llm_feedback_classify"]
 
 
 def _vec(text: str | None) -> list[float] | None:
@@ -171,6 +171,18 @@ def llm_rule(job: dict) -> dict:
 
     usages = [usage, embed_usage]
     return {"rule_id": rule_id, "inserted": inserted, "actual_cost": round(sum(u["cost_usd"] for u in usages), 6), "cost_log": _cost_rows(usages)}
+
+
+
+def llm_feedback_classify(job: dict) -> dict:
+    """Set the category of a feedback item (role copy). A person can still change it when confirming."""
+    from app import feedback
+    from app.stages.ingest import _cost_rows
+
+    item = db.fetch_one("select * from feedback_items where id = %s", (job["request"]["item_id"],))
+    category, usage = feedback.classify(item["note"])
+    db.execute("update feedback_items set category = %s where id = %s and status = 'received'", (category, item["id"]))
+    return {"category": category, "actual_cost": round(usage["cost_usd"], 6), "cost_log": _cost_rows([usage])}
 
 
 HANDLERS = {kind: SimpleNamespace(run=globals()[kind]) for kind in KINDS}

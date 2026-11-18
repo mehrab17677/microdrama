@@ -1,2 +1,10 @@
-{% extends "base.html" %}{% block body %}<h1>Signed in</h1>
-<p>Welcome, {{ user.display_name }}. The dashboard arrives in a later phase.</p>{% endblock %}
+{% extends "base.html" %}{% block title %}Dashboard{% endblock %}
+{% block body %}<h1>Dashboard</h1>
+{% if waiting %}<section id="waiting" style="background:#fff8e6;border:1px solid #f0d58c;border-radius:8px;padding:.75rem 1rem;margin-bottom:1.25rem">
+<strong>Waiting for you</strong>
+<ul style="margin:.4rem 0 0">{% for w in waiting %}<li><a href="{{ w.link }}">{{ w.title }}</a> · {{ w.what }}</li>{% endfor %}</ul></section>{% endif %}
+<table id="productions" data-watch="{{ watch }}"><thead><tr><th>Title</th><th>Category</th><th>Language</th><th>Owner</th><th>Stage</th><th>Status</th><th>Spend</th></tr></thead><tbody>
+{% for r in rows %}<tr data-series="{{ r.id }}"><td><a href="/productions/{{ r.id }}">{{ r.title or '(untitled)' }}</a></td><td>{{ r.category }}</td><td>{{ r.language }}</td><td>{{ r.owner_name }}</td>
+<td>{{ stage_label(r.current_stage) }}</td><td>{{ r.status }}</td><td>${{ '%.2f'|format(r.spent|float) }}</td></tr>
+{% else %}<tr><td colspan="7">No productions yet. <a href="/productions/new">Start one</a>.</td></tr>{% endfor %}</tbody></table>
+{% endblock %}

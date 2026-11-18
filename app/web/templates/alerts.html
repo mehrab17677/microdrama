@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% block title %}Alerts{% endblock %}
+{% block body %}<h1>Alerts</h1>
+<table><tbody>{% for a in alerts %}<tr{% if not a.read_at %} style="font-weight:600"{% endif %}><td>{{ a.created_at.strftime('%d %b %H:%M') }}</td><td>{{ a.kind|replace('_', ' ') }}</td>
+<td><a href="{{ a.link }}">{{ a.message }}</a></td>
+<td>{% if not a.read_at %}<form method="post" action="/alerts/{{ a.id }}/read"><button class="quiet">Mark read</button></form>{% endif %}</td></tr>
+{% else %}<tr><td>No alerts.</td></tr>{% endfor %}</tbody></table>{% endblock %}
