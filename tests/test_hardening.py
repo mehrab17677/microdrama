@@ -84,3 +84,16 @@ def test_the_reembed_script_remakes_every_vector_with_the_current_backend(env, m
 
     with pytest.raises(SystemExit):
         reembed_library.run()
+
+
+def test_the_compose_file_is_ready_for_a_single_server():
+    root = Path(__file__).resolve().parent.parent
+    compose = (root / "docker-compose.yml").read_text()
+    assert "PUBLIC_HOST: ${PUBLIC_HOST:-localhost}" in compose                    # Caddy needs the host name to get a certificate
+    assert "service_healthy" in compose and "service_completed_successfully" in compose and "pg_isready" in compose    # the database is waited for, then migrated, then the app starts
+    assert compose.count("media:/tmp/microdrama") == 1 and "\n  media:" in compose  # one shared folder for DRY_RUN files, used by every app process via the anchor
+    for script in ("gcp_create_vm.sh", "vm_bootstrap.sh"):
+        text = (root / "scripts" / script).read_text()
+        assert text.startswith("#!/usr/bin/env bash") and "set -euo pipefail" in text
+    assert "DRY_RUN=1" in (root / "scripts" / "vm_bootstrap.sh").read_text() and "sslip.io" in (root / "scripts" / "gcp_create_vm.sh").read_text()
+    assert (root / "docs" / "GCP_STAGING_SETUP.md").exists()
