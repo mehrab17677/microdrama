@@ -28,6 +28,7 @@ Tests need `TEST_DATABASE_URL` (default `postgresql://postgres@localhost:5433/mi
 
 ## Documents
 - `docs/DEPLOYMENT.md`: deploy, operate, back up, what is and is not verified.
+- `docs/GCP_STAGING_SETUP.md`: step-by-step guide for a free-credit Google Cloud staging server (dry-run, for stakeholder demos).
 - `docs/PILOT_RUNBOOK.md`: the paid checks and pilots, in order, with costs and stop conditions.
 - `docs/AD_PLACEMENT.md`: how brand placement works and its limits.
 - `docs/VENDOR_NOTES.md`: every vendor fact checked, every decision per phase.

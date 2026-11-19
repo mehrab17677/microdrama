@@ -1,5 +1,7 @@
 # Deployment
 
+> **Just want a staging copy for stakeholders before budget approval?** Follow [GCP_STAGING_SETUP.md](GCP_STAGING_SETUP.md): a beginner guide that sets up a small Google Cloud server in dry-run mode (no vendor keys needed), using the free trial credit.
+
 ## What you need
 | Item | Notes |
 |---|---|

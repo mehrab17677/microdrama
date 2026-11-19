@@ -4,8 +4,12 @@ x-app: &app
   env_file: .env
   environment:
     DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/microdrama}
-  depends_on: [db]
+  volumes: [media:/tmp/microdrama]      # DRY_RUN stores files here; every process must see the same folder (production uses R2)
   restart: unless-stopped
+
+x-needs-database: &needs-database
+  depends_on:
+    migrate: {condition: service_completed_successfully}
 
 services:
   db:
@@ -14,32 +18,44 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: microdrama
     volumes: [dbdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d microdrama"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
   migrate:
     <<: *app
     command: sh -c "python scripts/migrate.py && python scripts/seed_config.py"
     restart: "no"
+    depends_on:
+      db: {condition: service_healthy}
   web:
-    <<: *app
+    <<: [*app, *needs-database]
     command: uvicorn app.web.main:app --host 0.0.0.0 --port 8000
   worker:
-    <<: *app
+    <<: [*app, *needs-database]
     command: python -m app.jobs.worker
     deploy: {replicas: 2}
   runner:
-    <<: *app
+    <<: [*app, *needs-database]
     command: python -m app.graphs.runner
   poller:
-    <<: *app
+    <<: [*app, *needs-database]
     command: python -m app.jobs.poller
   retention:   # daily: deletes raw and failed clips older than raw_retention_days
-    <<: *app
+    <<: [*app, *needs-database]
     command: sh -c "while true; do python -m scripts.retention; sleep 86400; done"
   caddy:
     image: caddy:2
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:-localhost}      # the host name Caddy serves and gets a certificate for
     ports: ["80:80", "443:443"]
     volumes: ["./Caddyfile:/etc/caddy/Caddyfile:ro", "caddydata:/data"]
     depends_on: [web]
+    restart: unless-stopped
 
 volumes:
   dbdata:
   caddydata:
+  media:
