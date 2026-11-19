@@ -13,11 +13,12 @@ from app.config import dry_run, get_config
 from app.jobs.handlers import look_handlers
 from app.media import ffmpeg
 from app.media.routing import needs_lipsync
+from app import placement
 from app.qa import episode as episode_qa, lipsync, shot as shot_qa, vision
 from app.stages import look
 from app.vendors import storage
 
-KINDS = ["qa_shot", "qa_episode", "llm_rule", "llm_feedback_classify"]
+KINDS = ["qa_shot", "qa_episode", "qa_brand", "llm_rule", "llm_feedback_classify"]
 
 
 def _vec(text: str | None) -> list[float] | None:
@@ -42,8 +43,21 @@ def qa_shot(job: dict) -> dict:
     def add(check, passed, score=None, category=None, detail=None):
         rows.append({"check": check, "passed": bool(passed), "score": score, "category": category, "detail": detail or {}})
 
+    kind = spec.get("placement_kind")
     if shot["tier"] == "INSERT":
         add("clipping", True, detail={"insert": True})   # a static insert has no actors to match; there is nothing to judge
+        if kind in placement.FULL_FRAME:                 # the brand's real screens must be on screen, unchanged
+            with tempfile.TemporaryDirectory() as tmp:
+                clip = Path(tmp) / "insert.mp4"
+                storage.get_to_file(shot["final_clip_r2_key"], clip)
+                data = []
+                for r in placement.asset_rows(sid, placement.FULL_FRAME[kind]):
+                    f = Path(tmp) / "asset"
+                    storage.get_to_file(r["r2_key"], f)
+                    data.append(f.read_bytes())
+                ok, worst, detail = placement.verify_insert(clip, data, placement.brand_color(sid), float(shot["planned_duration"]),
+                                                            float(thresholds.get("brand_pixel_diff_max", placement.PIXEL_DIFF_MAX)))
+            add("asset_intact", ok, worst, None if ok else "asset", detail)
     else:
         speaker_code = next((c["code"] for c in spec["characters"] if c.get("mouth_visible_speaking")), None) or (spec["characters"][0]["code"] if spec["characters"] else None)
         char = db.fetch_one("select id from characters where series_id = %s and code = %s", (sid, speaker_code)) if speaker_code else None
@@ -86,6 +100,8 @@ def qa_shot(job: dict) -> dict:
             ok, level, detail = shot_qa.clipping(audio, float(spec.get("audio_gain_db", 0)), thresholds["clipping_max_db"])
             add("clipping", ok, level, None if ok else "clipping", detail)
 
+    if kind in placement.MANUAL:   # composited placements are not built or checked by a machine in this version: listed for a person
+        add("asset_intact", False, None, "unscored", {"manual_review": True, "placement": kind})
     failed = [r for r in rows if not r["passed"] and r["category"] != "unscored"]
     # Rows are kept per render attempt, so a failure that was repaired stays on record (the learn step writes rules from it).
     # Checking the same attempt again (after a clipping repair) replaces that attempt's rows.
@@ -139,7 +155,7 @@ def qa_episode(job: dict) -> dict:
     rows.append(("lipsync_review", True, None, {"scorer": lipsync.get_scorer().name, "unscored_shots": sorted(set(unscored)),
                                                 "note": "No lip-sync scorer is configured: lip-sync is judged by people at the gates." if lipsync.get_scorer().name == "none" else "scored"}))
     with db.transaction() as conn:
-        conn.execute("delete from qa_results where episode_id = %s and shot_id is null and qa_round = %s", (ep["id"], rnd))
+        conn.execute("delete from qa_results where episode_id = %s and shot_id is null and qa_round = %s and check_name = any(%s)", (ep["id"], rnd, [r[0] for r in rows]))
         for check, passed, score, detail in rows:
             conn.execute("insert into qa_results (series_id, episode_id, qa_round, check_name, passed, score, detail) values (%s,%s,%s,%s,%s,%s,%s)",
                          (sid, ep["id"], rnd, check, bool(passed), score, Jsonb(detail)))
@@ -183,6 +199,24 @@ def llm_feedback_classify(job: dict) -> dict:
     category, usage = feedback.classify(item["note"])
     db.execute("update feedback_items set category = %s where id = %s and status = 'received'", (category, item["id"]))
     return {"category": category, "actual_cost": round(usage["cost_usd"], 6), "cost_log": _cost_rows([usage])}
+
+
+# ---------------------------------------------------------------- brand QA (episode level)
+
+def qa_brand(job: dict) -> dict:
+    """placement_count (every planned placement is in the cut; a spoken one is actually said) and exclusions (role writer on the scene text and
+    the exclusion list). The pixel check of a full-frame insert is a shot-level check (asset_intact in qa_shot) so a failure rebuilds that shot."""
+    from app.stages import brand_qa
+    from app.stages.ingest import _cost_rows
+
+    sid, rnd = job["series_id"], job["request"]["round"]
+    ep = db.fetch_one("select * from episodes where id = %s", (job["episode_id"],))
+    rows, usage = brand_qa.evaluate(sid, ep)
+    with db.transaction() as conn:
+        conn.execute("delete from qa_results where episode_id = %s and shot_id is null and qa_round = %s and check_name = any(%s)", (ep["id"], rnd, [r[0] for r in rows]))
+        for check, passed, detail in rows:
+            conn.execute("insert into qa_results (series_id, episode_id, qa_round, check_name, passed, detail) values (%s,%s,%s,%s,%s,%s)", (sid, ep["id"], rnd, check, passed, Jsonb(detail)))
+    return {"failed": [c for c, p, _ in rows if not p], "actual_cost": round(usage["cost_usd"], 6) if usage else 0.0, "cost_log": _cost_rows([usage]) if usage else []}
 
 
 HANDLERS = {kind: SimpleNamespace(run=globals()[kind]) for kind in KINDS}

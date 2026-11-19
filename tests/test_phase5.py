@@ -618,20 +618,21 @@ def test_ad_placement_needs_a_brand_brief_and_assets(env):
         assert needle in text, needle
     svg = b"<svg xmlns='http://www.w3.org/2000/svg'><rect width='4' height='4'/></svg>"
     d, f = brief(data={"category": "ad_placement", "brand_name": "Acme", "product": "Pay app", "placement_types": ["phone_full", "spoken"], "frequency_note": "every 5th episode",
-                       "exclusions": "scams, crime", "spoken_wording": "Use Acme Pay", "brand_kinds": ["logo"], "brand_labels": ["Logo"]})
-    f.append(("brand_files", ("logo.svg", svg, "image/svg+xml")))
+                       "exclusions": "scams, crime", "spoken_wording": "Use Acme Pay", "brand_kinds": ["app_screen"], "brand_labels": ["Home screen"]})
+    shot_png = png()
+    f.append(("brand_files", ("logo.png", shot_png, "image/png")))
     r = post_json(c, d, f)
     assert r.status_code == 303
     sid = uuid.UUID(r.headers["location"].rsplit("/", 1)[1])
     bb = db.fetch_one("select * from brand_briefs where series_id = %s", (sid,))
     assert (bb["brand_name"], bb["placement_types"], bb["exclusions"], bb["version"]) == ("Acme", ["phone_full", "spoken"], ["scams", "crime"], 1)
     asset = db.fetch_one("select * from brand_assets where series_id = %s", (sid,))
-    assert asset["kind"] == "logo" and asset["r2_key"].endswith(".svg")
+    assert asset["kind"] == "app_screen" and asset["r2_key"].endswith(".png")
     from app.vendors import storage
     import tempfile, pathlib
-    out = pathlib.Path(tempfile.mkdtemp()) / "x.svg"
+    out = pathlib.Path(tempfile.mkdtemp()) / "x.png"
     storage.get_to_file(asset["r2_key"], out)
-    assert out.read_bytes() == svg                                                                  # reproduced exactly as supplied
+    assert out.read_bytes() == shot_png                                                                  # reproduced exactly as supplied
 
 
 def test_a_valid_brief_creates_everything_in_one_go(env):

@@ -93,7 +93,7 @@ def apply_learning(series_id, batch: str) -> dict:
                 for rid in result.get("rule_ids") or []:
                     conn.execute("update learned_rules set wins = wins + 1 where id = %s", (rid,))
                     wins += 1
-            if s["camera_setup_id"]:
+            if s["camera_setup_id"] and s["tier"] != "INSERT":   # an insert is built by FFmpeg: there is no model to learn about
                 uses += 1
                 conn.execute("update camera_setups set uses = uses + 1, passes = passes + %s where id = %s", (1 if first else 0, s["camera_setup_id"]))
                 score = conn.execute("select score from qa_results where shot_id = %s and check_name = 'lipsync' and score is not null order by qa_round desc limit 1", (s["id"],)).fetchone()

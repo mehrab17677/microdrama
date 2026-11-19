@@ -31,7 +31,10 @@ def video_request(tier: str, shot: dict, prompt: str, camera_fixed: bool, shot_a
     raise ValueError(f"tier {tier} has no video request")
 
 
-def lipsync_request(raw_clip_key: str, shot_audio_key: str) -> dict:
+def lipsync_request(raw_clip_key: str, shot_audio_key: str, engine: str = "kling", seed_from=None) -> dict:
+    if engine == "latentsync":   # fal-ai/latentsync: video_url, audio_url, guidance_scale, seed, loop_mode (fal docs)
+        return {"endpoint": falmedia.LATENTSYNC, "arguments": {"video_key": raw_clip_key, "audio_key": shot_audio_key, "guidance_scale": 1.0,
+                                                                 "seed": stable_seed(seed_from or raw_clip_key, "latentsync")}}
     return {"endpoint": falmedia.KLING_LIPSYNC, "arguments": {"video_key": raw_clip_key, "audio_key": shot_audio_key}}
 
 

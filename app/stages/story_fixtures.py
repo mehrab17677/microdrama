@@ -58,7 +58,8 @@ def make_wardrobe(ctx: dict, scripts: dict) -> WardrobePlan:
 
 def make_placement(ctx: dict, episodes: list[int]) -> PlacementPlan:
     allowed = ctx["brand"]["placement_types"] if ctx["brand"] else ["phone_full"]
-    return PlacementPlan(placements=[PlacementItem(episode=n, kind=allowed[0], description="The lead checks the brand on a phone.") for n in (2, 5) if n in episodes])
+    return PlacementPlan(placements=[PlacementItem(episode=n, kind=allowed[i % len(allowed)], description="The lead checks the brand on a phone.")
+                                     for i, n in enumerate(n for n in (2, 5) if n in episodes)])
 
 
 def make_continuity() -> ContinuityReport:

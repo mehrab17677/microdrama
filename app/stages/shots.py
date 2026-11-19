@@ -36,7 +36,8 @@ Rules:
 - Spoken shots are timed by the voice-over, so keep each speaking shot to a few lines. Put non-speaking shots (reactions, objects, places, movement) between them so the episode breathes.
 - sounds lists the sound effects heard in the shot, as short phrases. Never put music or speech there.
 - action describes what the camera sees and what people do. Never put on-screen text in it.
-- placement_kind is the placement from the plan when the shot carries one, otherwise null."""
+- placement_kind is the placement from the plan when the shot carries one, otherwise null.
+- Brand placements (only when the episode material lists one): a phone_full or product_full placement is its OWN shot: shot_type static_insert, placement_kind set, NO characters and NO lines. It shows the brand's real screens or product images full frame and is placed right after the shot where a character lifts the phone or shows the product. Give it est_seconds of at least 1 second per image (2 to 10). A spoken placement is placement_kind 'spoken' on the shot that carries the brand wording. phone_in_hand and signage placements set placement_kind on the shot where the phone or sign is visible."""
 
 
 # ---------------------------------------------------------------- context
@@ -91,7 +92,7 @@ def build_material(sid, episode: dict, ctx: dict, setups: list[dict]) -> str:
         scenes.append(f"Scene {scene['index']} in {scene['set_code']} at {scene['time_of_day']}. Action: {scene['action']}\n  Outfits: {json.dumps(wear)}\n" + "\n".join(rows))
     sets = db.fetch_all("select code, name, time_of_day from sets where series_id = %s order by code, time_of_day", (sid,))
     chars = db.fetch_all("select code, name from characters where series_id = %s order by code", (sid,))
-    return "\n\n".join([
+    return "\n\n".join([placement_block(sid, episode["number"])] * bool(episode_placements(sid, episode["number"])) + [
         f"Episode {episode['number']}. Hook: {script['hook_action']}  Cliffhanger: {script['cliffhanger_action']}",
         "Characters: " + ", ".join(f"{c['code']} ({c['name']})" for c in chars),
         "Sets: " + ", ".join(f"{s['code']} {s['name']} [{s['time_of_day']}]" for s in sets),
@@ -99,6 +100,21 @@ def build_material(sid, episode: dict, ctx: dict, setups: list[dict]) -> str:
         "Camera setups you may use (name | size | angle | movement | composition | best for):\n"
         + ("\n".join(f"- {s['name']} | {s['shot_size']} | {s['angle']} | {s['movement']} | {s['composition']} | {s['best_for']}" for s in setups) or "(the library is empty: define new setups)"),
     ])
+
+
+def episode_placements(sid, number: int) -> list[dict]:
+    return db.fetch_all("select kind, description from placements where series_id = %s and episode_number = %s order by created_at", (sid, number))
+
+
+def placement_block(sid, number: int) -> str:
+    from app import placement
+
+    lines = []
+    for p in episode_placements(sid, number):
+        n = len(placement.asset_rows(sid, placement.FULL_FRAME[p["kind"]])) if p["kind"] in placement.FULL_FRAME else 0
+        extra = f" ({n} image(s) to show, so est_seconds of at least {max(2, round(n * placement.MIN_HOLD + 0.499))})" if n else ""
+        lines.append(f"- {p['kind']}{extra}: {p['description']}")
+    return "Brand placement planned for this episode (the shot list must include it):\n" + "\n".join(lines)
 
 
 # ---------------------------------------------------------------- checks
@@ -124,6 +140,12 @@ def validate_shot_list(sid, episode: dict, shots: list[ShotSpec], known_setups: 
     sets = {(r["code"], r["time_of_day"]) for r in db.fetch_all("select code, time_of_day from sets where series_id = %s", (sid,))}
     outfits = outfit_codes(sid)
     plan = wardrobe_for(sid, episode["number"])
+    from app import placement
+
+    planned_kinds = {p["kind"] for p in episode_placements(sid, episode["number"])}
+    for kind in sorted(planned_kinds):
+        if not any(s.placement_kind == kind for s in shots):
+            problems.append(f"the episode's {kind} placement is missing: add a shot with placement_kind '{kind}'")
     for n, s in enumerate(shots):
         tag = f"shot {n}"
         if s.idx != n:
@@ -157,6 +179,16 @@ def validate_shot_list(sid, episode: dict, shots: list[ShotSpec], known_setups: 
                 problems.append(f"{tag}: every line in it must belong to {speakers[0].code}")
         elif any(c.mouth_visible_speaking for c in s.characters):
             problems.append(f"{tag}: nobody speaks in it, so mouth_visible_speaking must be false")
+        if s.placement_kind and s.placement_kind not in planned_kinds:
+            problems.append(f"{tag}: placement_kind {s.placement_kind!r} is not in this episode's placement plan")
+        if s.placement_kind in placement.FULL_FRAME and (s.shot_type != "static_insert" or speaking or s.characters):
+            problems.append(f"{tag}: a {s.placement_kind} placement is a static_insert with no characters and no lines")
+        if s.placement_kind in placement.FULL_FRAME and s.shot_type == "static_insert":
+            n = len(placement.asset_rows(sid, placement.FULL_FRAME[s.placement_kind]))
+            if not 2 <= s.est_seconds <= 10:
+                problems.append(f"{tag}: est_seconds must be between 2 and 10, not {s.est_seconds}")
+            elif n and s.est_seconds / n < placement.MIN_HOLD:
+                problems.append(f"{tag}: {n} image(s) need at least {n * placement.MIN_HOLD:.1f} seconds, not {s.est_seconds}")
         name = s.camera_setup_name.strip()
         if s.new_setup is not None:
             if s.new_setup.name.strip() != name:
@@ -209,10 +241,14 @@ def persist_shot_list(sid, episode: dict, shots: list[ShotSpec], genre_id) -> li
             tier = tier_for(s.shot_type)
             conn.execute(
                 "insert into shots (series_id, episode_id, idx, shot_type, tier, camera_setup_id, set_id, spec, line_ids, speaker_character_id, status)"
-                " values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'planned')",
+                " values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (sid, episode["id"], s.idx, s.shot_type, tier, new_ids.get(s.camera_setup_name.strip()) or library.get(s.camera_setup_name.strip()),
-                 sets[(s.set_code, s.time_of_day)], Jsonb(spec), [line_rows[i] for i in s.line_indexes], chars[speaker.code] if speaker else None))
+                 sets[(s.set_code, s.time_of_day)], Jsonb(spec), [line_rows[i] for i in s.line_indexes], chars[speaker.code] if speaker else None,
+                 "keyframe_ready" if tier == "INSERT" else "planned"))   # an insert has no keyframe: it goes straight to ffmpeg_insert
         conn.execute("update episodes set status = 'shots_planned' where id = %s", (episode["id"],))
+    from app import placement
+
+    placement.link_shots(sid, episode["number"])
     return usages
 
 
@@ -261,7 +297,33 @@ def fixture_shot_list(sid, episode: dict) -> ShotList:
                               line_indexes=[l["idx"] for l in run], action="A quiet exchange.", sounds=["room tone"], is_hook=not shots, is_cliffhanger=False, placement_kind=None, est_seconds=4.0))
     shots[0] = shots[0].model_copy(update={"is_hook": True})
     shots[-1] = shots[-1].model_copy(update={"is_cliffhanger": True})
+    shots = _with_placements(sid, episode, shots, setup, hi)
     return ShotList(episode_number=episode["number"], shots=shots)
+
+
+def _with_placements(sid, episode: dict, shots: list[ShotSpec], setup, hi: int) -> list[ShotSpec]:
+    """The planned brand placements: a full-frame insert after the first shot (replacing a plain non-speaking shot if the list is already full),
+    a spoken mention on the first speaking shot, a composited kind on the first non-speaking shot."""
+    from app import placement
+
+    for p in episode_placements(sid, episode["number"]):
+        kind = p["kind"]
+        if kind in placement.FULL_FRAME:
+            n = len(placement.asset_rows(sid, placement.FULL_FRAME[kind]))
+            insert = ShotSpec(idx=0, shot_type="static_insert", scene_index=shots[0].scene_index, set_code=shots[0].set_code, time_of_day=shots[0].time_of_day,
+                              camera_setup_name=setup.name, new_setup=setup, characters=[], line_indexes=[], action="The brand's real screens, full frame.", sounds=[],
+                              is_hook=False, is_cliffhanger=False, placement_kind=kind, est_seconds=float(min(10, max(3, n * 2))))
+            if len(shots) >= hi:   # make room: a plain non-speaking shot in the middle goes
+                drop = next(i for i in range(1, len(shots) - 1) if not shots[i].line_indexes)
+                shots = shots[:drop] + shots[drop + 1:]
+            shots = shots[:2] + [insert] + shots[2:]
+        elif kind == "spoken":
+            i = next((i for i, s in enumerate(shots) if s.line_indexes), 0)
+            shots[i] = shots[i].model_copy(update={"placement_kind": kind})
+        else:
+            i = next((i for i, s in enumerate(shots) if not s.line_indexes), 0)
+            shots[i] = shots[i].model_copy(update={"placement_kind": kind})
+    return [s.model_copy(update={"idx": i}) for i, s in enumerate(shots)]
 
 
 # ---------------------------------------------------------------- shot requests (llm_shot_request)

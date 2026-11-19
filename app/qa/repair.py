@@ -19,7 +19,7 @@ from app.media.routing import method_tier, needs_lipsync
 MAX_ATTEMPTS = 3
 GAIN_STEP_DB = -3.0
 MIN_GAIN_DB = -9.0
-STAGE = {"keyframe": 0, "rerender": 1, "lipsync": 2, "audio": 3}
+STAGE = {"keyframe": 0, "rerender": 1, "rebuild": 1, "lipsync": 2, "audio": 3}
 
 
 def failures(shot_id) -> list[tuple[str, str | None]]:
@@ -46,6 +46,8 @@ def wanted(shot: dict, fails: list[tuple[str, str | None]]) -> str | None:
             acts.add("lipsync" if can_sync else "rerender")
         elif check == "clipping":
             acts.add("audio")
+        elif check == "asset_intact":
+            acts.add("rebuild")      # a brand insert that is not the supplied screen is rebuilt, never shipped
     return min(acts, key=STAGE.get) if acts else None
 
 
@@ -63,6 +65,8 @@ def decide(shot: dict, fails: list[tuple[str, str | None]], max_attempts: int = 
         return {"action": "audio", "set": {"status": "ready"}, "spec": {"audio_gain_db": gain}, "reset": True}
     if shot["attempts"] >= max_attempts:
         return {"action": "needs_human", "set": {"status": "needs_human"}, "reset": False}
+    if act == "rebuild":     # no vendor model is involved, so there is no fallback route: build it again (the attempt number makes a new ledger key)
+        return {"action": "rebuild", "set": {"status": "keyframe_ready", "attempts": shot["attempts"] + 1}, "reset": True}
     if shot["attempts"] == max_attempts - 1 and not shot["fallback_used"]:
         mt = method_tier(shot["tier"], True, shot["line_count"])
         planned = float(shot["planned_duration"])

@@ -16,7 +16,11 @@ from app.qa import face
 from app.vendors import storage
 
 MIN_SIDE = 512
-PLACEMENT_TYPES = ("phone_full", "phone_in_hand", "signage", "spoken")
+PLACEMENT_TYPES = ("phone_full", "product_full", "phone_in_hand", "signage", "spoken")
+ASSET_FOR_PLACEMENT = {"phone_full": "app_screen", "product_full": "product", "phone_in_hand": "app_screen", "signage": "logo"}
+ASSET_LABEL = {"app_screen": "app screen", "product": "product image", "logo": "logo"}
+HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+MIN_BRAND_SIDE = 200
 BRAND_ASSET_KINDS = ("logo", "app_screen", "product")
 NOT_LISTED_ALERT = (
     "No reference material exists for this genre. Add sources through Feed Showrunner context, "
@@ -41,6 +45,7 @@ class IntakeForm:
     frequency_note: str = ""
     exclusions: list[str] = field(default_factory=list)
     spoken_wording: str = ""
+    brand_color: str = "#FFFFFF"
     brand_assets: list[tuple[str, str, str, bytes]] = field(default_factory=list)  # (kind, label, file name, bytes)
 
 
@@ -77,9 +82,23 @@ def validate(form: IntakeForm) -> list[str]:
         if not form.product.strip():
             problems.append("Product is required for an ad placement drama.")
         if not form.placement_types or any(p not in PLACEMENT_TYPES for p in form.placement_types):
-            problems.append("Choose at least one placement type (phone_full, phone_in_hand, signage, spoken).")
+            problems.append("Choose at least one placement type (phone_full, product_full, phone_in_hand, signage, spoken).")
         if not form.brand_assets:
             problems.append("Add at least one brand asset (logo, app screen or product image).")
+        if not HEX_COLOR.match(form.brand_color.strip() or "#FFFFFF"):
+            problems.append("The brand colour must look like #1A2B3C.")
+        kinds = {k for k, _, _, _ in form.brand_assets}
+        for p in form.placement_types:
+            need = ASSET_FOR_PLACEMENT.get(p)
+            if need and form.brand_assets and need not in kinds:
+                problems.append(f"The {p} placement needs at least one {ASSET_LABEL[need]} asset.")
+        for i, (kind, label, name, data) in enumerate(form.brand_assets, 1):
+            if kind in ("app_screen", "product"):   # composited full frame: it must be a raster image Pillow can read (a logo may be an SVG)
+                img = _open(data)
+                if img is None:
+                    problems.append(f"Brand asset {i} ({label or name}) is not a readable image: use PNG, JPEG or WebP for {ASSET_LABEL[kind]}s.")
+                elif min(img.size) < MIN_BRAND_SIDE:
+                    problems.append(f"Brand asset {i} ({label or name}) is too small: the shortest side must be at least {MIN_BRAND_SIDE} pixels.")
     # 2. genre
     if form.genre_id:
         if not _ready_genre(form.genre_id):
@@ -183,9 +202,10 @@ def create_production(user_id, form: IntakeForm) -> uuid.UUID:
         )
         if form.category == "ad_placement":
             conn.execute(
-                "insert into brand_briefs (series_id, version, brand_name, product, placement_types, frequency_note, exclusions, spoken_wording)"
-                " values (%s, 1, %s, %s, %s, %s, %s, %s)",
-                (series_id, form.brand_name.strip(), form.product.strip(), form.placement_types, form.frequency_note.strip(), form.exclusions, form.spoken_wording.strip() or None),
+                "insert into brand_briefs (series_id, version, brand_name, product, placement_types, frequency_note, exclusions, spoken_wording, brand_color)"
+                " values (%s, 1, %s, %s, %s, %s, %s, %s, %s)",
+                (series_id, form.brand_name.strip(), form.product.strip(), form.placement_types, form.frequency_note.strip(), form.exclusions, form.spoken_wording.strip() or None,
+                 (form.brand_color.strip() or "#FFFFFF").upper()),
             )
             cur.executemany("insert into brand_assets (series_id, kind, label, r2_key) values (%s, %s, %s, %s)", [(series_id, k, label, key) for k, label, key in assets])
         for gate in (0, 1):

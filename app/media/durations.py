@@ -69,7 +69,7 @@ def fit_episode(shots: list[dict], timing: dict) -> dict:
     runtime = runtime_seconds(list(planned.values()))
     lo, hi = RUNTIME_RANGE
     if not lo <= runtime <= hi:
-        silent = [s for s in shots if not s["line_durations"]]
+        silent = [s for s in shots if not s["line_durations"] and not s.get("fixed")]   # a brand insert keeps the seconds that let each asset be read
         speaking_total = sum(p for idx, p in planned.items() if idx not in {s["idx"] for s in silent})
         scaled = rescale_nonspeaking(speaking_total, [planned[s["idx"]] for s in silent])
         for s, p in zip(silent, scaled):

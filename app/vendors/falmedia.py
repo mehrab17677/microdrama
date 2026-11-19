@@ -21,12 +21,15 @@ SEEDANCE = "fal-ai/bytedance/seedance/v1.5/pro/image-to-video"
 KLING_V3 = "fal-ai/kling-video/v3/pro/image-to-video"
 KLING_AVATAR = "fal-ai/kling-video/ai-avatar/v2/pro"
 KLING_LIPSYNC = "fal-ai/kling-video/lipsync/audio-to-video"
+LATENTSYNC = "fal-ai/latentsync"   # open-source LatentSync hosted on fal: the lip-sync fallback (docs/LIPSYNC_OPTIONS.md)
+LATENTSYNC_MAX_SECONDS = 40
 
 ENDPOINT_BY_MODEL_KEY = {
     "seedance_1_5_pro": SEEDANCE,
     "kling_v3_pro": KLING_V3,
     "kling_avatar_v2_pro": KLING_AVATAR,
     "kling_lipsync": KLING_LIPSYNC,
+    "latentsync": LATENTSYNC,
 }
 
 
@@ -52,7 +55,20 @@ def estimate_cost(model_key: str, *, duration: float = 0, audio: bool = False, w
     if model_key == "kling_lipsync":
         p = video["kling_lipsync"]
         return round(math.ceil(duration / p["step_s"]) * p["step_s"] * p["per_s"], 6)
+    if model_key == "latentsync":   # a flat price for a video up to 40 s, then per second
+        p = video["latentsync"]
+        return round(p["flat"] if duration <= p["flat_up_to_s"] else duration * p["per_s_over"], 6)
     raise PermanentError(f"unknown video model key {model_key!r}")
+
+
+def check_latentsync_limits(*, video_seconds: float, audio_seconds: float) -> None:
+    problems = []
+    if video_seconds > LATENTSYNC_MAX_SECONDS:
+        problems.append(f"video is {video_seconds:.1f} s; the LatentSync endpoint is priced up to {LATENTSYNC_MAX_SECONDS} s")
+    if abs(audio_seconds - video_seconds) > 0.25:
+        problems.append("audio and video lengths must match")
+    if problems:
+        raise PermanentError("; ".join(problems))
 
 
 def check_lipsync_limits(*, video_seconds: float, video_bytes: int, width: int, height: int, audio_seconds: float, audio_bytes: int) -> None:

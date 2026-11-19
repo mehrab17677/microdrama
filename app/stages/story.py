@@ -25,7 +25,7 @@ RUNTIME_RANGE = (75.0, 90.0)
 WORDS_PER_SECOND = 2.5
 SECONDS_PER_ACTION = 2.0
 TIMES_OF_DAY = ("day", "night", "dusk")
-ALLOWED_PLACEMENT = ("phone_full", "phone_in_hand", "signage", "spoken")
+ALLOWED_PLACEMENT = ("phone_full", "product_full", "phone_in_hand", "signage", "spoken")
 
 BIBLE_INSTRUCTIONS = """You are the Showrunner of a vertical micro-drama studio (episodes of 75 to 90 seconds, watched on a phone).
 Write the Story Bible for a new series.
@@ -436,7 +436,7 @@ def persist_wardrobe(series_id, plan: WardrobePlan) -> None:
 
 def persist_placement(series_id, plan: PlacementPlan) -> None:
     assets = {a["kind"]: a["id"] for a in db.fetch_all("select kind, id from brand_assets where series_id = %s order by created_at", (series_id,))}
-    asset_for = {"phone_full": "app_screen", "phone_in_hand": "app_screen", "signage": "logo"}
+    asset_for = {"phone_full": "app_screen", "product_full": "product", "phone_in_hand": "app_screen", "signage": "logo"}
     with db.transaction() as conn:
         conn.execute("delete from placements where series_id = %s", (series_id,))
         for p in plan.placements:

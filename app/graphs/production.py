@@ -424,7 +424,7 @@ def fit_durations(state):
         dur = {l["id"]: float(l["duration_seconds"]) for l in lines}
         shots = db.fetch_all("select id, idx, tier, line_ids, spec from shots where episode_id = %s order by idx", (e["id"],))
         fitted = durations.fit_episode(
-            [{"idx": s["idx"], "tier": s["tier"], "line_durations": [dur[i] for i in s["line_ids"]], "est_seconds": s["spec"].get("est_seconds")} for s in shots], timing)
+            [{"idx": s["idx"], "tier": s["tier"], "line_durations": [dur[i] for i in s["line_ids"]], "est_seconds": s["spec"].get("est_seconds"), "fixed": s["spec"].get("placement_kind") in ("phone_full", "product_full")} for s in shots], timing)
         if fitted["too_long"]:
             if common.count_notes(sid, f"shots_redo:{e['number']}") >= 2:
                 common.fail_series(sid, "fit_durations", f"episode {e['number']} still has a shot over 10 s after redoing the shot list")
@@ -560,6 +560,9 @@ def apply_learning(state):
         "update episodes set status = 'qa_passed' where series_id = %s and batch = %s and (status = 'compiled' or (status = 'rendered' and exists"
         " (select 1 from shots s where s.episode_id = episodes.id and s.status = 'needs_human')))", (sid, batch))
     learning.apply_learning(sid, batch)
+    from app import placement
+
+    placement.finalize(sid, batch)
     return {}
 
 

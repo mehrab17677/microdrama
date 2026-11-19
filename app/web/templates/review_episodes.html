@@ -17,6 +17,11 @@
 {% if ep.flagged %}<p><strong>Flagged shots</strong></p><ul>{% for f in ep.flagged %}<li>shot {{ f.idx }}: {{ f.check_name }}{% if f.category %} ({{ f.category }}){% endif %}{% if f.category == 'unscored' %}: no lip-sync scorer, please judge by eye{% endif %}</li>{% endfor %}</ul>{% endif %}</details>
 </section>{% else %}<p>No episode is compiled yet.</p>{% endfor %}
 
+{% if placements %}<h2>Placement report</h2>
+<table id="placements"><thead><tr><th>Episode</th><th>Placement</th><th>Method</th><th>Time</th><th>Status</th></tr></thead><tbody>
+{% for p in placements %}<tr data-kind="{{ p.kind }}"><td>{{ p.episode }}</td><td>{{ p.kind }}</td><td>{{ p.method }}{% if p.assets %}<br><small>{{ p.assets|join(', ') }}</small>{% endif %}</td><td>{{ p.time or '–' }}</td><td>{{ p.status }}</td></tr>{% endfor %}</tbody></table>
+<p><a href="/productions/{{ s.id }}/placements.csv">Download the placement report (CSV)</a></p>{% endif %}
+
 <h2>Feedback</h2>
 {% if items %}<table id="feedback">{% for i in items %}<tr data-item="{{ i.id }}"><td>Episode {{ i.episode_number }} ({{ '%02d:%02d'|format(i.start_seconds // 60, i.start_seconds % 60) }}-{{ '%02d:%02d'|format(i.end_seconds // 60, i.end_seconds % 60) }})</td>
 <td>{{ i.note }}<br><small>{{ i.shot_ids|length }} shot(s) · {{ i.author }}{% if i.decline_reason %} · {{ i.decline_reason }}{% endif %}</small></td><td>{{ i.status|replace('_', ' ') }}</td>

@@ -46,12 +46,14 @@ CONFIG_DEFAULTS: dict[str, tuple[object, str]] = {
                 "kling_v3_pro": {"per_s_audio": 0.168, "per_s_silent": 0.112},
                 "kling_avatar_v2_pro": {"per_audio_s": 0.115},
                 "kling_lipsync": {"per_s": 0.014, "step_s": 5},
+                "latentsync": {"flat": 0.20, "flat_up_to_s": 40, "per_s_over": 0.005},
             },
         },
         "Prices used for estimates and cost_log (guide 6.1-6.4, with verified changes)",
     ),
     "vendor_concurrency": ({"fal": 8, "elevenlabs": 4, "openai": 4, "anthropic": 6, "local": 2}, "Max running+submitted jobs per vendor"),
     "max_attempts": (3, "Attempts per failed work item"),
+    "lipsync_fallback": ("latentsync", "Lip-sync engine for the first redo and after Kling refuses a clip: latentsync, or none to keep Kling only"),
     "timing": ({"pad_head": 0.25, "pad_tail": 0.35, "line_gap": 0.30}, "Seconds"),
     "qa_thresholds": (
         {
@@ -64,6 +66,7 @@ CONFIG_DEFAULTS: dict[str, tuple[object, str]] = {
             "loudness_target": -16,
             "loudness_tolerance": 1.5,
             "hook_max_seconds": 4.0,
+            "brand_pixel_diff_max": 6.0,
         },
         "Initial values; calibrate on the pilot",
     ),

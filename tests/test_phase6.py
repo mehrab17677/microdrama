@@ -498,7 +498,7 @@ def ad_form(exclusions="scams"):
     svg = b"<svg xmlns='http://www.w3.org/2000/svg'><rect width='4' height='4'/></svg>"
     data, files = brief(data={"category": "ad_placement", "brand_name": "Acme", "product": "Pay app", "placement_types": ["phone_full", "spoken"], "frequency_note": "every 3rd episode",
                               "exclusions": exclusions, "brand_kinds": ["app_screen"], "brand_labels": ["Home screen"]})
-    files.append(("brand_files", ("home.svg", svg, "image/svg+xml")))
+    files.append(("brand_files", ("home.png", png(), "image/png")))
     return data, files
 
 
@@ -508,7 +508,7 @@ def test_an_ad_placement_plan_is_validated_and_stored(runner):
     sid = uuid.UUID(post_json(c, data, files).headers["location"].rsplit("/", 1)[1])
     drive(runner, sid, at_gate(2))
     rows = db.fetch_all("select p.episode_number, p.kind, p.brand_asset_id, a.kind akind from placements p left join brand_assets a on a.id = p.brand_asset_id where p.series_id = %s order by 1", (sid,))
-    assert [(r["episode_number"], r["kind"], r["akind"]) for r in rows] == [(2, "phone_full", "app_screen"), (5, "phone_full", "app_screen")]
+    assert [(r["episode_number"], r["kind"], r["akind"]) for r in rows] == [(2, "phone_full", "app_screen"), (5, "spoken", None)]    # the fixture plan cycles through the allowed types
     assert db.fetch_one("select beat->'placement'->>'kind' k from episodes where series_id = %s and number = 2", (sid,))["k"] == "phone_full"
     assert db.fetch_one("select beat->'placement' p from episodes where series_id = %s and number = 1", (sid,))["p"] is None
     assert "How the brand appears" in c.get(f"/productions/{sid}/review/story").text

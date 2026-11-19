@@ -45,3 +45,11 @@ def model_key(tier: str, fallback_used: bool = False, line_count: int = 0) -> st
 def needs_lipsync(tier: str, line_count: int, fallback_used: bool = False) -> bool:
     """B2 and C shots that carry speech are lip-synced afterwards (a B1 shot too once it uses the B2 fallback method)."""
     return method_tier(tier, fallback_used, line_count) in ("B2", "C") and line_count > 0
+
+
+def lipsync_engine(sync_attempts: int, kling_failures: int, fallback: str = "latentsync") -> str:
+    """'kling' or 'latentsync'. Kling LipSync is the main engine. The fallback (config lipsync_fallback) is used for the redo after a lip-sync
+    check failed (sync_attempts >= 1) and for any retry after Kling itself failed or refused the clip."""
+    if fallback == "latentsync" and (sync_attempts >= 1 or kling_failures >= 1):
+        return "latentsync"
+    return "kling"

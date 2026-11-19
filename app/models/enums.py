@@ -184,6 +184,7 @@ class FeedbackStatus(StrEnum):
 
 class PlacementKind(StrEnum):
     phone_full = "phone_full"
+    product_full = "product_full"
     phone_in_hand = "phone_in_hand"
     signage = "signage"
     spoken = "spoken"

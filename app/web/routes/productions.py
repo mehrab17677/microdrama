@@ -48,6 +48,7 @@ def create_production(
     frequency_note: str = Form(""),
     exclusions: str = Form(""),
     spoken_wording: str = Form(""),
+    brand_color: str = Form("#FFFFFF"),
     brand_kinds: list[str] = Form(default=[]),
     brand_labels: list[str] = Form(default=[]),
     brand_files: list[UploadFile] = File(default=[]),
@@ -60,7 +61,7 @@ def create_production(
         char_refs=[(char_roles[i] if i < len(char_roles) else "", f.file.read()) for i, f in enumerate(chars)],
         aesthetic_refs=[data for _, data in _read(aesthetic_files)],
         brand_name=brand_name, product=product, placement_types=placement_types, frequency_note=frequency_note,
-        exclusions=intake.parse_keywords(exclusions), spoken_wording=spoken_wording,
+        exclusions=intake.parse_keywords(exclusions), spoken_wording=spoken_wording, brand_color=brand_color,
         brand_assets=[((brand_kinds[i] if i < len(brand_kinds) else "product"), (brand_labels[i] if i < len(brand_labels) else ""), name, data)
                       for i, (name, data) in enumerate(_read(brand_files))],
     )

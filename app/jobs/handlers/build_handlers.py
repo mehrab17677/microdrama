@@ -295,8 +295,11 @@ class Lipsync:
             storage.get_to_file(shot["raw_clip_r2_key"], raw)
             probe = ffmpeg.probe(raw)
         info = build_and_store_shot_audio(sid, shot, round(probe["duration"], 3))   # audio length equals video length
-        falmedia.check_lipsync_limits(video_seconds=probe["duration"], video_bytes=probe["bytes"], width=probe["width"], height=probe["height"],
-                                      audio_seconds=info["seconds"], audio_bytes=info["bytes"])
+        if job["endpoint"] == falmedia.LATENTSYNC:
+            falmedia.check_latentsync_limits(video_seconds=probe["duration"], audio_seconds=info["seconds"])
+        else:
+            falmedia.check_lipsync_limits(video_seconds=probe["duration"], video_bytes=probe["bytes"], width=probe["width"], height=probe["height"],
+                                          audio_seconds=info["seconds"], audio_bytes=info["bytes"])
         return falmedia.submit(job["endpoint"], media_requests.resolve_keys(job["request"]["arguments"]))
 
     @staticmethod
@@ -314,20 +317,42 @@ class Lipsync:
 # ---------------------------------------------------------------- inserts and the compile
 
 def ffmpeg_insert(job: dict) -> dict:
-    """A static set insert: the set plate for the shot's planned seconds with a slow zoom (guide 10.8)."""
+    """A static insert. A brand placement (phone_full, product_full) shows the brand's real app screens or product images full frame on the brand
+    colour, one after another with hard cuts, each held for planned / n seconds; no video model is involved and the assets are never restyled.
+    Any other static insert is the set plate with a slow zoom (guide 10.8)."""
+    from app import placement
+
     sid = job["series_id"]
     shot = _shot(job)
-    plate_key = db.fetch_one("select plate_r2_key from sets where id = %s", (shot["set_id"],))["plate_r2_key"]
-    if not plate_key:
-        raise PermanentError("the set has no plate image")
+    kind = (shot["spec"] or {}).get("placement_kind")
     with tempfile.TemporaryDirectory() as tmp:
-        plate, out = Path(tmp) / "plate.png", Path(tmp) / "insert.mp4"
-        storage.get_to_file(plate_key, plate)
-        media_compile.set_insert(plate, float(shot["planned_duration"]), out)
-        key = f"series/{sid}/episodes/{shot['episode_number']:02d}/shots/{shot['idx']}/insert.mp4"
+        work_dir, out = Path(tmp), Path(tmp) / "insert.mp4"
+        if kind in placement.FULL_FRAME:
+            rows = placement.asset_rows(sid, placement.FULL_FRAME[kind])
+            if not rows:
+                raise PermanentError(f"the brand has no {placement.FULL_FRAME[kind].replace('_', ' ')} asset for this placement")
+            data = []
+            for r in rows:
+                f = work_dir / "asset"
+                storage.get_to_file(r["r2_key"], f)
+                data.append(f.read_bytes())
+            try:
+                placement.build_insert(data, placement.brand_color(sid), float(shot["planned_duration"]), out, work_dir)
+            except OSError as exc:   # an asset that cannot be read as an image
+                raise PermanentError(f"a brand asset cannot be read as an image: {exc}") from exc
+        else:
+            plate_key = db.fetch_one("select plate_r2_key from sets where id = %s", (shot["set_id"],))["plate_r2_key"]
+            if not plate_key:
+                raise PermanentError("the set has no plate image")
+            plate = work_dir / "plate.png"
+            storage.get_to_file(plate_key, plate)
+            media_compile.set_insert(plate, float(shot["planned_duration"]), out)
+        key = f"series/{sid}/episodes/{shot['episode_number']:02d}/shots/{shot['idx']}/insert_a{shot['attempts']}.mp4"
         storage.put_file(key, out)
     db.execute("update shots set final_clip_r2_key = %s, status = 'ready' where id = %s", (key, shot["id"]))
-    return {}
+    if kind in placement.FULL_FRAME:
+        placement.mark_placed(sid, shot["id"])
+    return {"placement": kind}
 
 
 def ffmpeg_compile(job: dict) -> dict:

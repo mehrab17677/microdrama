@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
-from app import audit, budget, db, decisions, events, feedback, overview
+from app import audit, budget, db, decisions, events, feedback, overview, placement
 from app.web.deps import get_current_user, require_decider
 from app.web.templating import templates
 
@@ -103,8 +103,18 @@ def review_episodes(request: Request, series_id: uuid.UUID, user: dict = Depends
         "user": user, "s": s, "episodes": episodes, "items": items, "gate": gate, "can_decide": can_decide, "categories": feedback.CATEGORIES,
         "rework_left": gate == 4 and used < int(get_config("pilot_rework_rounds")), "rework_used": used, "spend": overview.spend(series_id),
         "projection": overview.projection(series_id) if gate == 4 else None, "confirmed": any(i["status"] == "confirmed" for i in items),
-        "feedback_media": _media,
+        "feedback_media": _media, "placements": placement.report(series_id),
     })
+
+
+@router.get("/productions/{series_id}/placements.csv")
+def placement_report_csv(series_id: uuid.UUID, user: dict = Depends(get_current_user)):
+    """The placement report for the brand: every placement with its episode and timestamp."""
+    from fastapi.responses import Response
+
+    if not db.fetch_one("select 1 from series where id = %s", (series_id,)):
+        raise HTTPException(404, "Production not found.")
+    return Response(placement.report_csv(series_id), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="placement-report-{series_id}.csv"'})
 
 
 @router.post("/productions/{series_id}/feedback")

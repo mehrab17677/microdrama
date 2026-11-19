@@ -9,7 +9,7 @@ from app.config import get_config
 from app.graphs import common
 from app.graphs.steps import WorkItem
 from app.media import costs
-from app.media.routing import method_tier, model_key, needs_lipsync
+from app.media.routing import lipsync_engine, method_tier, model_key, needs_lipsync
 from app.models.enums import JobKind, Vendor
 from app.stages import look
 from app.vendors import eleven, falmedia, images
@@ -260,8 +260,10 @@ def lipsync_items(sid, batch, rnd) -> list[WorkItem]:
         if not needs_lipsync(s["tier"], s["line_count"], s["fallback_used"]):
             continue
         audio_key = f"series/{sid}/episodes/{s['episode_number']:02d}/shots/{s['idx']}/shot_audio.mp3"
-        req = media_requests.lipsync_request(s["raw_clip_r2_key"], audio_key)
-        cost = costs.shot_lipsync_cost(s["tier"], s["line_count"], s["render_duration"], s["fallback_used"])
+        kling_failed = db.fetch_one("select count(*) n from jobs where kind = 'lipsync' and shot_id = %s and endpoint = %s and status = 'failed'", (s["id"], falmedia.KLING_LIPSYNC))["n"]
+        engine = lipsync_engine(s["sync_attempts"], kling_failed, str(get_config("lipsync_fallback")))
+        req = media_requests.lipsync_request(s["raw_clip_r2_key"], audio_key, engine, seed_from=f"{s['id']}{s['sync_attempts']}")
+        cost = costs.shot_lipsync_cost(s["tier"], s["line_count"], s["render_duration"], s["fallback_used"], engine)
         items.append(WorkItem(JobKind.lipsync, FAL, {"shot_id": str(s["id"]), "sync_attempt": s["sync_attempts"], "endpoint": req["endpoint"], "arguments": req["arguments"], **_fb(s)},
                               endpoint=req["endpoint"], episode_id=s["episode_id"], shot_id=s["id"], budget_class="video", estimated_cost=cost))
     return items

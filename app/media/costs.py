@@ -19,5 +19,7 @@ def shot_clip_cost(tier: str, planned: float, render: int, line_count: int, fall
     return falmedia.estimate_cost(key, duration=render, audio=(line_count == 0))   # C
 
 
-def shot_lipsync_cost(tier: str, line_count: int, render: int, fallback_used: bool = False) -> float:
-    return falmedia.estimate_cost("kling_lipsync", duration=render) if needs_lipsync(tier, line_count, fallback_used) else 0.0
+def shot_lipsync_cost(tier: str, line_count: int, render: int, fallback_used: bool = False, engine: str = "kling") -> float:
+    if not needs_lipsync(tier, line_count, fallback_used):
+        return 0.0
+    return falmedia.estimate_cost("latentsync" if engine == "latentsync" else "kling_lipsync", duration=render)
