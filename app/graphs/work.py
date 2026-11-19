@@ -9,7 +9,7 @@ from app.config import get_config
 from app.graphs import common
 from app.graphs.steps import WorkItem
 from app.media import costs
-from app.media.routing import lipsync_engine, method_tier, model_key, needs_lipsync
+from app.media.routing import is_brand, lipsync_engine, method_tier, needs_lipsync, shot_model_key
 from app.models.enums import JobKind, Vendor
 from app.stages import look
 from app.vendors import eleven, falmedia, images
@@ -129,6 +129,8 @@ def pack_items(sid, batch, rnd) -> list[WorkItem]:
         items.append(WorkItem(JobKind.image_set_plate, OPENAI, {"set_id": str(s["id"]), "rev": rev}))
     for s in db.fetch_all("select distinct code from sets where series_id = %s and ambience_r2_key is null order by code", (sid,)):
         items.append(WorkItem(JobKind.sfx_ambience, ELEVEN, {"set_code": s["code"], "rev": rev}, estimated_cost=eleven.sfx_cost(30)))
+    if db.fetch_one("select 1 from brand_briefs where series_id = %s and product_sheet is null limit 1", (sid,)):   # ad placement: describe the real product once
+        items.append(WorkItem(JobKind.llm_product_sheet, ANTHROPIC, {"try": retry, "rev": rev}))
     speaking = common.speaking_codes(sid)
     for c in chars:
         if c["code"] in speaking and not db.fetch_one("select 1 from character_assets where character_id = %s and kind = 'voice_sample'", (c["id"],)):
@@ -173,7 +175,8 @@ def tts_items(sid, batch, rnd) -> list[WorkItem]:
 def keyframe_cache_key(spec: dict) -> str:
     """character, outfit, emotion group, set, time of day, camera setup (guide 9.6)."""
     chars = ",".join(f"{c['code']}:{c['outfit_code']}" for c in spec.get("characters", []))
-    return "|".join([chars, str(spec.get("emotion_group", "")), spec.get("set_code", ""), spec.get("time_of_day", ""), spec.get("camera_setup_name", "")])
+    brand = f"brand:{spec.get('placement_kind')}:{spec.get('idx')}" if spec.get("brand") else ""   # a brand shot never shares a keyframe with another shot
+    return "|".join([brand, chars, str(spec.get("emotion_group", "")), spec.get("set_code", ""), spec.get("time_of_day", ""), spec.get("camera_setup_name", "")])
 
 
 def keyframe_items(sid, batch, rnd) -> list[WorkItem]:
@@ -202,7 +205,7 @@ def keyframe_items(sid, batch, rnd) -> list[WorkItem]:
 
 def shot_request_items(sid, batch, rnd) -> list[WorkItem]:
     return [
-        WorkItem(JobKind.llm_shot_request, ANTHROPIC, {"shot_id": str(s["id"]), "attempts": s["attempts"], "model_key": model_key(s["tier"], s["fallback_used"], s["line_count"]), **_fb(s)},
+        WorkItem(JobKind.llm_shot_request, ANTHROPIC, {"shot_id": str(s["id"]), "attempts": s["attempts"], "model_key": shot_model_key(s), **_fb(s)},
                  episode_id=s["episode_id"], shot_id=s["id"])
         for s in _batch_shots(sid, batch, ("keyframe_ready",)) if s["tier"] != "INSERT"
     ]
@@ -215,12 +218,12 @@ def planned_video_cost(sid, batch) -> float:
     """The batch budget: every clip and lip-sync step, one attempt each (guide 7.5)."""
     total = 0.0
     for s in db.fetch_all(
-        "select s.tier, s.fallback_used, s.planned_duration, s.render_duration, cardinality(s.line_ids) line_count from shots s join episodes e on e.id = s.episode_id"
+        "select s.tier, s.fallback_used, s.spec, s.planned_duration, s.render_duration, cardinality(s.line_ids) line_count from shots s join episodes e on e.id = s.episode_id"
         " where s.series_id = %s and e.batch = %s", (sid, batch),
     ):
         if s["planned_duration"] is None:
             continue
-        total += costs.shot_clip_cost(s["tier"], float(s["planned_duration"]), s["render_duration"], s["line_count"], s["fallback_used"])
+        total += costs.shot_clip_cost(s["tier"], float(s["planned_duration"]), s["render_duration"], s["line_count"], s["fallback_used"], is_brand(s["spec"]))
         total += costs.shot_lipsync_cost(s["tier"], s["line_count"], s["render_duration"], s["fallback_used"])
     return round(total, 6)
 
@@ -235,13 +238,39 @@ def clip_items(sid, batch, rnd) -> list[WorkItem]:
             continue
         prompt = _latest_prompt(s["id"], s["attempts"])
         audio_key = f"series/{sid}/episodes/{s['episode_number']:02d}/shots/{s['idx']}/shot_audio.mp3"
+        if is_brand(s["spec"]) and s["tier"] in ("A", "B2"):
+            items.append(_brand_clip_item(sid, s, prompt, audio_key))
+            continue
         mt = method_tier(s["tier"], s["fallback_used"], s["line_count"])
         req = media_requests.video_request(mt, {"id": str(s["id"]), "keyframe_r2_key": s["keyframe_r2_key"], "render_duration": s["render_duration"],
                                                         "attempts": s["attempts"], "line_count": s["line_count"]}, prompt["prompt"], prompt["camera_fixed"], audio_key)
-        cost = costs.shot_clip_cost(s["tier"], float(s["planned_duration"]), s["render_duration"], s["line_count"], s["fallback_used"])
+        cost = costs.shot_clip_cost(s["tier"], float(s["planned_duration"]), s["render_duration"], s["line_count"], s["fallback_used"], is_brand(s["spec"]))
         items.append(WorkItem(JobKind.video_clip, FAL, {"tier": mt, "shot_id": str(s["id"]), "attempt": s["attempts"], "endpoint": req["endpoint"], "arguments": req["arguments"], "shot_audio_key": audio_key, **_fb(s)},
                               endpoint=req["endpoint"], episode_id=s["episode_id"], shot_id=s["id"], budget_class="video", estimated_cost=cost))
     return items
+
+
+def _brand_clip_item(sid, s, prompt: dict, audio_key: str) -> WorkItem:
+    """A brand shot goes to Seedance 2.0 reference-to-video with its keyframe and the REAL product photos and logo. The final prompt is assembled by code
+    from fixed templates and the one validated action sentence (app/stages/brand.py)."""
+    from app import placement
+    from app.media import requests as media_requests
+    from app.stages import brand
+
+    kind = s["spec"]["placement_kind"]
+    rows = placement.reference_assets(sid, kind)
+    products = [r["r2_key"] for r in rows if r["kind"] != "logo"]
+    logo = next((r["r2_key"] for r in rows if r["kind"] == "logo"), None)
+    keys = [s["keyframe_r2_key"], *products, *([logo] if logo else [])]
+    tag = brand.tags(1, len(products), bool(logo))
+    line = " ".join(f'"{l["text"]}"' for l in db.fetch_all("select text from dialogue_lines where id = any(%s) order by idx", (s["line_ids"],))) if s["line_ids"] else None
+    minimum = float((placement.brief(sid) or {}).get("min_exposure_seconds") or 3)
+    text = brand.compose_video_prompt(prompt["prompt"], kind, tag, int(minimum), s["attempts"], bool(s["line_count"]), line)
+    req = media_requests.brand_video_request(keys, text, s["render_duration"], audio=(s["tier"] == "A"))
+    cost = costs.shot_clip_cost(s["tier"], float(s["planned_duration"]), s["render_duration"], s["line_count"], s["fallback_used"], True)
+    return WorkItem(JobKind.video_clip, FAL, {"tier": s["tier"], "shot_id": str(s["id"]), "attempt": s["attempts"], "endpoint": req["endpoint"], "arguments": req["arguments"],
+                                              "shot_audio_key": audio_key, "brand": kind, **_fb(s)},
+                    endpoint=req["endpoint"], episode_id=s["episode_id"], shot_id=s["id"], budget_class="video", estimated_cost=cost)
 
 
 def _latest_prompt(shot_id, attempts) -> dict:

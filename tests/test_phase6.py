@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from helpers import at_gate, drive, is_status
-from test_phase5 import ENV, brief, client, env, gate, jobs_of, post_json, png, runner, start, to_gate, voices  # noqa: F401 (fixtures)
+from test_phase5 import ENV, ad_brief, brief, client, env, gate, jobs_of, post_json, png, runner, start, to_gate, voices  # noqa: F401 (fixtures)
 
 from app import db
 from app.config import clear_config_cache
@@ -170,9 +170,9 @@ def test_wardrobe_rules():
 
 
 def test_placement_rules():
-    brand = {"placement_types": ["phone_full", "spoken"], "exclusions": ["scam", "crime"]}
+    brand = {"placement_types": ["product_in_use", "spoken"], "exclusions": ["scam", "crime"]}
     summaries = {1: "A quiet dinner.", 2: "The scam is exposed.", 3: "A chase."}
-    ok = PlacementPlan(placements=[PlacementItem(episode=1, kind="phone_full", description="d")])
+    ok = PlacementPlan(placements=[PlacementItem(episode=1, kind="product_in_use", description="d")])
     assert story.validate_placement(ok, brand, summaries) == []
     text = " | ".join(story.validate_placement(PlacementPlan(placements=[PlacementItem(episode=2, kind="signage", description="d"), PlacementItem(episode=9, kind="spoken", description="d")]), brand, summaries))
     for needle in ("'signage' is not allowed", "matches the exclusion 'scam'", "unknown episode 9"):
@@ -495,11 +495,9 @@ def test_a_wardrobe_plan_that_misses_scenes_is_retried_with_the_errors(runner, m
 
 
 def ad_form(exclusions="scams"):
-    svg = b"<svg xmlns='http://www.w3.org/2000/svg'><rect width='4' height='4'/></svg>"
-    data, files = brief(data={"category": "ad_placement", "brand_name": "Acme", "product": "Pay app", "placement_types": ["phone_full", "spoken"], "frequency_note": "every 3rd episode",
-                              "exclusions": exclusions, "brand_kinds": ["app_screen"], "brand_labels": ["Home screen"]})
-    files.append(("brand_files", ("home.png", png(), "image/png")))
-    return data, files
+    from test_phase5 import ad_brief
+
+    return ad_brief(kinds=("product_in_use", "spoken"), exclusions=exclusions)
 
 
 def test_an_ad_placement_plan_is_validated_and_stored(runner):
@@ -508,8 +506,8 @@ def test_an_ad_placement_plan_is_validated_and_stored(runner):
     sid = uuid.UUID(post_json(c, data, files).headers["location"].rsplit("/", 1)[1])
     drive(runner, sid, at_gate(2))
     rows = db.fetch_all("select p.episode_number, p.kind, p.brand_asset_id, a.kind akind from placements p left join brand_assets a on a.id = p.brand_asset_id where p.series_id = %s order by 1", (sid,))
-    assert [(r["episode_number"], r["kind"], r["akind"]) for r in rows] == [(2, "phone_full", "app_screen"), (5, "spoken", None)]    # the fixture plan cycles through the allowed types
-    assert db.fetch_one("select beat->'placement'->>'kind' k from episodes where series_id = %s and number = 2", (sid,))["k"] == "phone_full"
+    assert [(r["episode_number"], r["kind"], r["akind"]) for r in rows] == [(2, "product_in_use", "product"), (5, "spoken", None)]    # the fixture plan cycles through the allowed types
+    assert db.fetch_one("select beat->'placement'->>'kind' k from episodes where series_id = %s and number = 2", (sid,))["k"] == "product_in_use"
     assert db.fetch_one("select beat->'placement' p from episodes where series_id = %s and number = 1", (sid,))["p"] is None
     assert "How the brand appears" in c.get(f"/productions/{sid}/review/story").text
     assert db.fetch_one("select count(*) n from jobs where series_id = %s and kind = 'llm_placement_plan' and status = 'succeeded'", (sid,))["n"] == 1

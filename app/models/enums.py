@@ -100,6 +100,7 @@ class JobKind(StrEnum):
     llm_placement_plan = "llm_placement_plan"
     llm_story_check = "llm_story_check"
     llm_trait_sheet = "llm_trait_sheet"
+    llm_product_sheet = "llm_product_sheet"
     llm_voice_profile = "llm_voice_profile"
     llm_audio_tag = "llm_audio_tag"
     image_master = "image_master"
@@ -183,11 +184,11 @@ class FeedbackStatus(StrEnum):
 
 
 class PlacementKind(StrEnum):
-    phone_full = "phone_full"
-    product_full = "product_full"
-    phone_in_hand = "phone_in_hand"
-    signage = "signage"
-    spoken = "spoken"
+    product_in_use = "product_in_use"      # a character uses the product (applies the lip balm)
+    product_shown = "product_shown"        # the product is held or placed with its label to the camera (hero)
+    product_ambient = "product_ambient"    # the product is in the scene (shelf, table, bag)
+    logo_in_scene = "logo_in_scene"        # the logo appears on packaging, signage or a poster in the scene
+    spoken = "spoken"                      # the brand wording is said
 
 
 class AlertKind(StrEnum):

@@ -33,6 +33,21 @@ def _asset(character_id, kind: str, **tags):
     return db.fetch_one(sql + " order by created_at limit 1", params)
 
 
+def _brand_check(sid, kind: str, frames: list[Path], planned: float):
+    """brand_fidelity for one placement shot: the real photos and logo against the shot's frames (docs/AD_PLACEMENT.md)."""
+    from app.qa import brand as brand_qa
+
+    brief = placement.brief(sid)
+    refs = placement.reference_assets(sid, kind)
+    products = [look.fetch_bytes(r["r2_key"]) for r in refs if r["kind"] != "logo"]
+    logo = next((look.fetch_bytes(r["r2_key"]) for r in refs if r["kind"] == "logo"), None)
+    n = len(frames) or 4     # dry-run media has no frames to read: the fixture answer covers four
+    expected = list(brief["label_texts"])
+    v, _usage = brand_qa.check([p.read_bytes() for p in frames], products, logo, kind, expected, fixture=lambda: brand_qa.fixture_pass(expected, n, kind))
+    ok, exposure, category, detail = brand_qa.judge(v, kind, expected, n, planned)
+    return ok, exposure, category, detail
+
+
 def qa_shot(job: dict) -> dict:
     sid, rnd = job["series_id"], job["request"]["round"]
     shot = db.fetch_one(
@@ -44,20 +59,9 @@ def qa_shot(job: dict) -> dict:
         rows.append({"check": check, "passed": bool(passed), "score": score, "category": category, "detail": detail or {}})
 
     kind = spec.get("placement_kind")
+    brand_result = None
     if shot["tier"] == "INSERT":
         add("clipping", True, detail={"insert": True})   # a static insert has no actors to match; there is nothing to judge
-        if kind in placement.FULL_FRAME:                 # the brand's real screens must be on screen, unchanged
-            with tempfile.TemporaryDirectory() as tmp:
-                clip = Path(tmp) / "insert.mp4"
-                storage.get_to_file(shot["final_clip_r2_key"], clip)
-                data = []
-                for r in placement.asset_rows(sid, placement.FULL_FRAME[kind]):
-                    f = Path(tmp) / "asset"
-                    storage.get_to_file(r["r2_key"], f)
-                    data.append(f.read_bytes())
-                ok, worst, detail = placement.verify_insert(clip, data, placement.brand_color(sid), float(shot["planned_duration"]),
-                                                            float(thresholds.get("brand_pixel_diff_max", placement.PIXEL_DIFF_MAX)))
-            add("asset_intact", ok, worst, None if ok else "asset", detail)
     else:
         speaker_code = next((c["code"] for c in spec["characters"] if c.get("mouth_visible_speaking")), None) or (spec["characters"][0]["code"] if spec["characters"] else None)
         char = db.fetch_one("select id from characters where series_id = %s and code = %s", (sid, speaker_code)) if speaker_code else None
@@ -89,6 +93,11 @@ def qa_shot(job: dict) -> dict:
             role = "vision_qa_strong" if shot["shot_type"] == "hero" else "vision_qa"
             v, _usage = vision.check(role, frames, master and look.fetch_bytes(master["r2_key_clean"]), outfit and look.fetch_bytes(outfit["r2_key_clean"]), spec["action"], emotion)
             add("vision", vision.passed(v), None, None if vision.passed(v) else (v.category or "artefact"), v.model_dump())
+            # brand placement: the real product is in the shot, unchanged and used correctly
+            if kind in placement.VISUAL:
+                ok, exposure, category, detail = _brand_check(sid, kind, frames, float(shot["planned_duration"]))
+                brand_result = (ok, exposure, detail)
+                add("brand_fidelity", ok, exposure, category, detail)
             # clipping: the shot audio is what is heard
             audio = clip
             if shot["line_ids"]:
@@ -100,8 +109,6 @@ def qa_shot(job: dict) -> dict:
             ok, level, detail = shot_qa.clipping(audio, float(spec.get("audio_gain_db", 0)), thresholds["clipping_max_db"])
             add("clipping", ok, level, None if ok else "clipping", detail)
 
-    if kind in placement.MANUAL:   # composited placements are not built or checked by a machine in this version: listed for a person
-        add("asset_intact", False, None, "unscored", {"manual_review": True, "placement": kind})
     failed = [r for r in rows if not r["passed"] and r["category"] != "unscored"]
     # Rows are kept per render attempt, so a failure that was repaired stays on record (the learn step writes rules from it).
     # Checking the same attempt again (after a clipping repair) replaces that attempt's rows.
@@ -113,6 +120,8 @@ def qa_shot(job: dict) -> dict:
             conn.execute("insert into qa_results (series_id, episode_id, shot_id, qa_round, check_name, passed, score, category, detail) values (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                          (sid, shot["episode_id"], shot["id"], rnd, r["check"], r["passed"], r["score"], r["category"], Jsonb({**r["detail"], **attempt})))
         conn.execute("update shots set status = %s where id = %s", ("qa_failed" if failed else "qa_passed", shot["id"]))
+        if brand_result is not None:
+            placement.record_check(conn, sid, shot["id"], brand_result[0], brand_result[1], {**brand_result[2], "attempts": shot["attempts"]})
     return {"failed": [r["check"] for r in failed], "unscored": [r["check"] for r in rows if r["category"] == "unscored"]}
 
 
@@ -172,7 +181,7 @@ def _read_text(key: str) -> str:
 
 def llm_rule(job: dict) -> dict:
     from app.jobs.errors import PermanentError
-    from app.media.routing import model_key
+    from app.media.routing import shot_model_key
     from app.stages import learning
 
     shot = db.fetch_one("select s.*, cardinality(s.line_ids) line_count from shots s where s.id = %s", (job["shot_id"],))
@@ -182,7 +191,7 @@ def llm_rule(job: dict) -> dict:
     if not text or len(text.split()) > 25:
         raise PermanentError(f"a rule is one sentence of at most 25 words, not {len(text.split())}")
     category = (db.fetch_one("select category from qa_results where shot_id = %s and check_name = %s and passed = false order by qa_round desc limit 1", (shot["id"], check)) or {}).get("category") or check
-    rule_id, inserted, embed_usage = learning.store_rule(model_key(shot["tier"], shot["fallback_used"], shot["line_count"]), text, category, shot["id"])
+    rule_id, inserted, embed_usage = learning.store_rule(shot_model_key(shot), text, category, shot["id"])
     from app.stages.ingest import _cost_rows
 
     usages = [usage, embed_usage]
@@ -204,19 +213,18 @@ def llm_feedback_classify(job: dict) -> dict:
 # ---------------------------------------------------------------- brand QA (episode level)
 
 def qa_brand(job: dict) -> dict:
-    """placement_count (every planned placement is in the cut; a spoken one is actually said) and exclusions (role writer on the scene text and
-    the exclusion list). The pixel check of a full-frame insert is a shot-level check (asset_intact in qa_shot) so a failure rebuilds that shot."""
+    """placement_count, exposure, exclusions and claims for one episode (app/stages/brand_qa.py). The product's own picture check is shot-level (brand_fidelity in qa_shot)."""
     from app.stages import brand_qa
     from app.stages.ingest import _cost_rows
 
     sid, rnd = job["series_id"], job["request"]["round"]
     ep = db.fetch_one("select * from episodes where id = %s", (job["episode_id"],))
-    rows, usage = brand_qa.evaluate(sid, ep)
+    rows, usages = brand_qa.evaluate(sid, ep)
     with db.transaction() as conn:
         conn.execute("delete from qa_results where episode_id = %s and shot_id is null and qa_round = %s and check_name = any(%s)", (ep["id"], rnd, [r[0] for r in rows]))
         for check, passed, detail in rows:
             conn.execute("insert into qa_results (series_id, episode_id, qa_round, check_name, passed, detail) values (%s,%s,%s,%s,%s,%s)", (sid, ep["id"], rnd, check, passed, Jsonb(detail)))
-    return {"failed": [c for c, p, _ in rows if not p], "actual_cost": round(usage["cost_usd"], 6) if usage else 0.0, "cost_log": _cost_rows([usage]) if usage else []}
+    return {"failed": [c for c, p, _ in rows if not p], "actual_cost": round(sum(u["cost_usd"] for u in usages), 6), "cost_log": _cost_rows(usages)}
 
 
 HANDLERS = {kind: SimpleNamespace(run=globals()[kind]) for kind in KINDS}

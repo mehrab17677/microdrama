@@ -17,9 +17,19 @@
 {% if ep.flagged %}<p><strong>Flagged shots</strong></p><ul>{% for f in ep.flagged %}<li>shot {{ f.idx }}: {{ f.check_name }}{% if f.category %} ({{ f.category }}){% endif %}{% if f.category == 'unscored' %}: no lip-sync scorer, please judge by eye{% endif %}</li>{% endfor %}</ul>{% endif %}</details>
 </section>{% else %}<p>No episode is compiled yet.</p>{% endfor %}
 
-{% if placements %}<h2>Placement report</h2>
-<table id="placements"><thead><tr><th>Episode</th><th>Placement</th><th>Method</th><th>Time</th><th>Status</th></tr></thead><tbody>
-{% for p in placements %}<tr data-kind="{{ p.kind }}"><td>{{ p.episode }}</td><td>{{ p.kind }}</td><td>{{ p.method }}{% if p.assets %}<br><small>{{ p.assets|join(', ') }}</small>{% endif %}</td><td>{{ p.time or '–' }}</td><td>{{ p.status }}</td></tr>{% endfor %}</tbody></table>
+{% if placements %}<h2>Brand placements</h2>
+<p>Each placement is a real product shown inside a generated scene. Compare the shot with the real pictures before you approve it. The final cut cannot be approved until every placement is approved.</p>
+<table id="placements"><thead><tr><th>Episode</th><th>Placement</th><th>Time</th><th>Seen</th><th>Status</th></tr></thead><tbody>
+{% for p in placements %}<tr data-kind="{{ p.kind }}" data-status="{{ p.status }}"><td>{{ p.episode }}</td><td>{{ p.method }}<br><small>{{ p.description }}</small></td><td>{{ p.time or '–' }}</td>
+<td>{% if p.exposure is not none %}{{ '%.1f'|format(p.exposure) }} s{% else %}–{% endif %}{% if p.label_read %}<br><small>label read: {{ p.label_read }}</small>{% endif %}</td>
+<td>{{ p.status }}{% if p.approved_by %}<br><small>by {{ p.approved_by }}</small>{% endif %}{% if p.review_note %}<br><small>{{ p.review_note }}</small>{% endif %}</td></tr>
+{% if p.kind != 'spoken' %}<tr class="compare"><td colspan="5"><div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-start">
+{% if p.clip_url %}<video controls playsinline preload="metadata" src="{{ p.clip_url }}" style="max-height:20rem;background:#000"></video>{% endif %}
+<div><small>The real assets</small><div style="display:flex;gap:.4rem">{% for a in p.assets %}<figure style="margin:0"><img src="{{ a.url }}" alt="{{ a.label }}" style="max-height:9rem"><figcaption><small>{{ a.label }}</small></figcaption></figure>{% endfor %}</div>
+{% if p.problems %}<ul style="color:#b00">{% for x in p.problems %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}</div>
+{% if can_decide and gate %}<div><form method="post" action="/productions/{{ s.id }}/placements/{{ p.id }}/approve" class="stack" style="max-width:18rem"><label>Note (needed if a check failed)<input name="note"></label><button>Approve</button></form>
+<form method="post" action="/productions/{{ s.id }}/placements/{{ p.id }}/reject" class="stack" style="max-width:18rem;margin-top:.5rem"><label>What is wrong<input name="note" required></label><button class="quiet">Reject and rework</button></form></div>{% endif %}
+</div></td></tr>{% endif %}{% endfor %}</tbody></table>
 <p><a href="/productions/{{ s.id }}/placements.csv">Download the placement report (CSV)</a></p>{% endif %}
 
 <h2>Feedback</h2>

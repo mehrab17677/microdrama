@@ -16,12 +16,14 @@ from app.qa import face
 from app.vendors import storage
 
 MIN_SIDE = 512
-PLACEMENT_TYPES = ("phone_full", "product_full", "phone_in_hand", "signage", "spoken")
-ASSET_FOR_PLACEMENT = {"phone_full": "app_screen", "product_full": "product", "phone_in_hand": "app_screen", "signage": "logo"}
-ASSET_LABEL = {"app_screen": "app screen", "product": "product image", "logo": "logo"}
+PLACEMENT_TYPES = ("product_in_use", "product_shown", "product_ambient", "logo_in_scene", "spoken")
+VISUAL_PLACEMENTS = ("product_in_use", "product_shown", "product_ambient", "logo_in_scene")   # drawn by the video model inside a scene
+BRAND_ASSET_KINDS = ("logo", "product", "app_screen")
+PRODUCT_VIEWS = ("front", "back", "side", "top", "open", "in_use")
+MIN_PRODUCT_SIDE = 800        # real product photos must be sharp enough to read the label
+MIN_LOGO_SIDE = 300
+MIN_DESCRIPTION_WORDS = 20
 HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
-MIN_BRAND_SIDE = 200
-BRAND_ASSET_KINDS = ("logo", "app_screen", "product")
 NOT_LISTED_ALERT = (
     "No reference material exists for this genre. Add sources through Feed Showrunner context, "
     "or provide a complete story of your own to use as inspiration."
@@ -46,7 +48,12 @@ class IntakeForm:
     exclusions: list[str] = field(default_factory=list)
     spoken_wording: str = ""
     brand_color: str = "#FFFFFF"
-    brand_assets: list[tuple[str, str, str, bytes]] = field(default_factory=list)  # (kind, label, file name, bytes)
+    product_description: str = ""      # what the product is and how it is used
+    product_physical: str = ""         # size, shape, colours, packaging
+    label_texts: list[str] = field(default_factory=list)       # text printed on the pack, one entry per line
+    forbidden_claims: list[str] = field(default_factory=list)  # things the story must never claim
+    min_exposure_seconds: float = 3.0
+    brand_assets: list[tuple[str, str, str, bytes, str]] = field(default_factory=list)  # (kind, label, file name, bytes, view)
 
 
 def parse_keywords(text: str) -> list[str]:
@@ -70,6 +77,50 @@ def _ready_genre(genre_id) -> bool:
     return bool(db.fetch_one("select 1 from sources where genre_id = %s and status = 'ready' limit 1", (genre_id,)))
 
 
+def clean_text(text: str, limit: int = 600) -> str:
+    """Everything typed about the brand is untrusted data: control characters out, whitespace collapsed, length limited."""
+    text = "".join(ch for ch in (text or "") if ch == "\n" or ch >= " ")
+    return re.sub(r"[ \t]+", " ", text).strip()[:limit]
+
+
+def validate_brand(form: IntakeForm) -> list[str]:
+    """The brand pack (docs/AD_PLACEMENT.md): what the product is and how it is used, the printed text, a logo and real product photos."""
+    problems: list[str] = []
+    if len(form.product_description.split()) < MIN_DESCRIPTION_WORDS:
+        problems.append(f"Describe the product and how it is used in at least {MIN_DESCRIPTION_WORDS} words (yours has {len(form.product_description.split())}).")
+    if not [t for t in form.label_texts if t.strip()]:
+        problems.append("List the text printed on the product pack (at least one line); the checks compare the label with it.")
+    if not 1 <= form.min_exposure_seconds <= 10:
+        problems.append("The minimum on-screen seconds per placement must be between 1 and 10.")
+    if not HEX_COLOR.match(form.brand_color.strip() or "#FFFFFF"):
+        problems.append("The brand colour must look like #1A2B3C.")
+    if not form.brand_assets:
+        problems.append("Add the brand assets: at least one logo and at least one real photo of the product (front view).")
+        return problems
+    kinds = {k for k, _, _, _, _ in form.brand_assets}
+    if "logo" not in kinds:
+        problems.append("Add at least one logo file (PNG, JPEG or WebP; a transparent PNG is best).")
+    visual = [p for p in form.placement_types if p in VISUAL_PLACEMENTS]
+    fronts = [a for a in form.brand_assets if a[0] in ("product", "app_screen") and a[4] in ("front", "screen")]
+    if visual and not fronts:
+        problems.append("Add at least one real photo of the product with the view set to front.")
+    for i, (kind, label, name, data, view) in enumerate(form.brand_assets, 1):
+        who = f"Brand asset {i} ({label or name})"
+        if kind not in BRAND_ASSET_KINDS:
+            problems.append(f"{who}: the kind must be one of {', '.join(BRAND_ASSET_KINDS)}.")
+            continue
+        if kind == "product" and view not in PRODUCT_VIEWS:
+            problems.append(f"{who}: the view must be one of {', '.join(PRODUCT_VIEWS)}.")
+        img = _open(data)
+        if img is None:
+            problems.append(f"{who} is not a readable image: use PNG, JPEG or WebP (models cannot use SVG).")
+            continue
+        minimum = MIN_PRODUCT_SIDE if kind in ("product", "app_screen") else MIN_LOGO_SIDE
+        if min(img.size) < minimum:
+            problems.append(f"{who} is too small: the shortest side must be at least {minimum} pixels so the label can be read.")
+    return problems
+
+
 def validate(form: IntakeForm) -> list[str]:
     """Every problem at once, in the guide's order."""
     problems: list[str] = []
@@ -82,23 +133,8 @@ def validate(form: IntakeForm) -> list[str]:
         if not form.product.strip():
             problems.append("Product is required for an ad placement drama.")
         if not form.placement_types or any(p not in PLACEMENT_TYPES for p in form.placement_types):
-            problems.append("Choose at least one placement type (phone_full, product_full, phone_in_hand, signage, spoken).")
-        if not form.brand_assets:
-            problems.append("Add at least one brand asset (logo, app screen or product image).")
-        if not HEX_COLOR.match(form.brand_color.strip() or "#FFFFFF"):
-            problems.append("The brand colour must look like #1A2B3C.")
-        kinds = {k for k, _, _, _ in form.brand_assets}
-        for p in form.placement_types:
-            need = ASSET_FOR_PLACEMENT.get(p)
-            if need and form.brand_assets and need not in kinds:
-                problems.append(f"The {p} placement needs at least one {ASSET_LABEL[need]} asset.")
-        for i, (kind, label, name, data) in enumerate(form.brand_assets, 1):
-            if kind in ("app_screen", "product"):   # composited full frame: it must be a raster image Pillow can read (a logo may be an SVG)
-                img = _open(data)
-                if img is None:
-                    problems.append(f"Brand asset {i} ({label or name}) is not a readable image: use PNG, JPEG or WebP for {ASSET_LABEL[kind]}s.")
-                elif min(img.size) < MIN_BRAND_SIDE:
-                    problems.append(f"Brand asset {i} ({label or name}) is too small: the shortest side must be at least {MIN_BRAND_SIDE} pixels.")
+            problems.append("Choose at least one placement type (" + ", ".join(PLACEMENT_TYPES) + ").")
+        problems += validate_brand(form)
     # 2. genre
     if form.genre_id:
         if not _ready_genre(form.genre_id):
@@ -174,11 +210,11 @@ def create_production(user_id, form: IntakeForm) -> uuid.UUID:
         storage.put_bytes(key, _png(data), "image/png")
         refs.append(("aesthetic", None, key, None))
     assets = []
-    for kind, label, name, data in form.brand_assets:
+    for kind, label, name, data, view in form.brand_assets:
         aid = uuid.uuid4()
         key = f"series/{series_id}/brand/{aid}.{_safe_ext(name)}"
         storage.put_bytes(key, data, "application/octet-stream")  # brand assets are stored exactly as supplied
-        assets.append((kind if kind in BRAND_ASSET_KINDS else "product", label or name, key))
+        assets.append((kind if kind in BRAND_ASSET_KINDS else "product", label or name, key, view if kind == "product" else ("screen" if kind == "app_screen" else "logo")))
 
     with db.transaction() as conn:
         genre_name = form.custom_genre.strip()
@@ -202,12 +238,15 @@ def create_production(user_id, form: IntakeForm) -> uuid.UUID:
         )
         if form.category == "ad_placement":
             conn.execute(
-                "insert into brand_briefs (series_id, version, brand_name, product, placement_types, frequency_note, exclusions, spoken_wording, brand_color)"
-                " values (%s, 1, %s, %s, %s, %s, %s, %s, %s)",
-                (series_id, form.brand_name.strip(), form.product.strip(), form.placement_types, form.frequency_note.strip(), form.exclusions, form.spoken_wording.strip() or None,
-                 (form.brand_color.strip() or "#FFFFFF").upper()),
+                "insert into brand_briefs (series_id, version, brand_name, product, placement_types, frequency_note, exclusions, spoken_wording, brand_color,"
+                " product_description, product_physical, label_texts, forbidden_claims, min_exposure_seconds)"
+                " values (%s, 1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (series_id, clean_text(form.brand_name, 120), clean_text(form.product, 160), form.placement_types, clean_text(form.frequency_note, 300), [clean_text(x, 120) for x in form.exclusions],
+                 clean_text(form.spoken_wording, 300) or None, (form.brand_color.strip() or "#FFFFFF").upper(), clean_text(form.product_description, 1500),
+                 clean_text(form.product_physical, 800), [clean_text(x, 160) for x in form.label_texts if x.strip()], [clean_text(x, 160) for x in form.forbidden_claims if x.strip()],
+                 form.min_exposure_seconds),
             )
-            cur.executemany("insert into brand_assets (series_id, kind, label, r2_key) values (%s, %s, %s, %s)", [(series_id, k, label, key) for k, label, key in assets])
+            cur.executemany("insert into brand_assets (series_id, kind, label, r2_key, view) values (%s, %s, %s, %s, %s)", [(series_id, k, label, key, v) for k, label, key, v in assets])
         for gate in (0, 1):
             conn.execute("insert into gate_decisions (series_id, gate, decision, decided_by) values (%s, %s, 'approve', %s)", (series_id, gate, user_id))
         audit.log(conn, user_id, "production.create", series_id, {"category": form.category, "language": form.language})

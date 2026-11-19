@@ -12,6 +12,7 @@ MODEL_KEY_BY_TIER = {
     "B2": "seedance_1_5_pro",
     "C": "kling_v3_pro",
 }
+BRAND_MODEL_KEY = "seedance_2_0_ref"   # brand placement shots: Seedance 2.0 reference-to-video with the real product pictures
 FALLBACK_MODEL_KEY_BY_TIER = {  # guide 11.5, used when the main model has failed twice
     "A": "kling_v3_pro",
     "B1": "seedance_1_5_pro",   # the B2 method: silent clip, then lip-sync
@@ -38,8 +39,19 @@ def method_tier(tier: str, fallback_used: bool = False, line_count: int = 0) -> 
     return FALLBACK_METHOD[tier]
 
 
-def model_key(tier: str, fallback_used: bool = False, line_count: int = 0) -> str:
+def is_brand(spec: dict | None) -> bool:
+    return bool((spec or {}).get("brand"))
+
+
+def model_key(tier: str, fallback_used: bool = False, line_count: int = 0, brand: bool = False) -> str:
+    """A brand shot is always Seedance 2.0 reference-to-video (there is no fallback model: a different model would be a different, unapproved look)."""
+    if brand and tier in ("A", "B2"):
+        return BRAND_MODEL_KEY
     return MODEL_KEY_BY_TIER[method_tier(tier, fallback_used, line_count)]
+
+
+def shot_model_key(shot: dict) -> str:
+    return model_key(shot["tier"], shot.get("fallback_used", False), shot.get("line_count", 0) or len(shot.get("line_ids") or []), is_brand(shot.get("spec")))
 
 
 def needs_lipsync(tier: str, line_count: int, fallback_used: bool = False) -> bool:

@@ -12,7 +12,7 @@ from psycopg.types.json import Jsonb
 from pydantic import BaseModel
 
 from app import db
-from app.media.routing import model_key
+from app.media.routing import shot_model_key
 from app.vendors import images, llm
 
 DEDUP_COSINE = 0.88
@@ -47,7 +47,7 @@ def latest_request_result(shot_id, attempts: int | None = None) -> dict:
 # ---------------------------------------------------------------- rules
 
 def write_rule(shot: dict, check: str, fixture=None) -> tuple[RuleOut, dict]:
-    mk = model_key(shot["tier"], shot["fallback_used"], shot["line_count"])
+    mk = shot_model_key(shot)
     fails = db.fetch_all("select category, detail from qa_results where shot_id = %s and check_name = %s and passed = false and category is distinct from 'unscored' order by qa_round desc, created_at desc", (shot["id"], check))
     attempt = fails[0]["detail"].get("attempts") if fails else None     # the prompt of the attempt that failed, not of a later repair
     prompt = (latest_request_result(shot["id"], attempt) if attempt is not None else {}).get("prompt") or latest_request_result(shot["id"]).get("prompt", "")
@@ -99,7 +99,7 @@ def apply_learning(series_id, batch: str) -> dict:
                 score = conn.execute("select score from qa_results where shot_id = %s and check_name = 'lipsync' and score is not null order by qa_round desc limit 1", (s["id"],)).fetchone()
                 if score:
                     conn.execute("update camera_setups set lipsync_score_sum = lipsync_score_sum + %s, lipsync_score_n = lipsync_score_n + 1 where id = %s", (score["score"], s["camera_setup_id"]))
-                mk = model_key(s["tier"], s["fallback_used"], s["line_count"])
+                mk = shot_model_key(s)
                 if first and result.get("prompt") and s["tier"] != "INSERT":
                     conn.execute("update camera_setups set prompt_by_model = prompt_by_model || %s where id = %s and not (prompt_by_model ? %s)",
                                  (Jsonb({mk: result["prompt"]}), s["camera_setup_id"], mk))
@@ -112,9 +112,9 @@ def update_avoid_models() -> int:
     """Append a model key to avoid_models when a setup has >= 10 finished uses on it and a first-attempt pass rate under 0.5."""
     stats: dict[tuple, list[int]] = {}
     for s in db.fetch_all(
-        "select s.camera_setup_id, s.tier, s.fallback_used, cardinality(s.line_ids) line_count, s.status, s.attempts, s.sync_attempts from shots s"
+        "select s.camera_setup_id, s.tier, s.fallback_used, s.spec, cardinality(s.line_ids) line_count, s.status, s.attempts, s.sync_attempts from shots s"
         " where s.camera_setup_id is not null and s.tier <> 'INSERT' and s.status in ('qa_passed','qa_failed','needs_human')"):
-        key = (s["camera_setup_id"], model_key(s["tier"], s["fallback_used"], s["line_count"]))
+        key = (s["camera_setup_id"], shot_model_key(s))
         entry = stats.setdefault(key, [0, 0])
         entry[0] += 1
         entry[1] += 1 if first_attempt_pass(s) else 0

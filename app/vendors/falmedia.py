@@ -21,6 +21,7 @@ SEEDANCE = "fal-ai/bytedance/seedance/v1.5/pro/image-to-video"
 KLING_V3 = "fal-ai/kling-video/v3/pro/image-to-video"
 KLING_AVATAR = "fal-ai/kling-video/ai-avatar/v2/pro"
 KLING_LIPSYNC = "fal-ai/kling-video/lipsync/audio-to-video"
+SEEDANCE2_REF = "bytedance/seedance-2.0/reference-to-video"   # brand shots: up to 9 reference images, @Image1 tags (fal docs)
 LATENTSYNC = "fal-ai/latentsync"   # open-source LatentSync hosted on fal: the lip-sync fallback (docs/LIPSYNC_OPTIONS.md)
 LATENTSYNC_MAX_SECONDS = 40
 
@@ -30,6 +31,7 @@ ENDPOINT_BY_MODEL_KEY = {
     "kling_avatar_v2_pro": KLING_AVATAR,
     "kling_lipsync": KLING_LIPSYNC,
     "latentsync": LATENTSYNC,
+    "seedance_2_0_ref": SEEDANCE2_REF,
 }
 
 
@@ -55,6 +57,9 @@ def estimate_cost(model_key: str, *, duration: float = 0, audio: bool = False, w
     if model_key == "kling_lipsync":
         p = video["kling_lipsync"]
         return round(math.ceil(duration / p["step_s"]) * p["step_s"] * p["per_s"], 6)
+    if model_key == "seedance_2_0_ref":   # per generated second, by resolution (fal, Nov 2026); audio costs the same on or off
+        p = video["seedance_2_0_ref"]
+        return round(duration * p["per_s"][p["resolution"]], 6)
     if model_key == "latentsync":   # a flat price for a video up to 40 s, then per second
         p = video["latentsync"]
         return round(p["flat"] if duration <= p["flat_up_to_s"] else duration * p["per_s_over"], 6)

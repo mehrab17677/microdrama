@@ -31,6 +31,14 @@ def video_request(tier: str, shot: dict, prompt: str, camera_fixed: bool, shot_a
     raise ValueError(f"tier {tier} has no video request")
 
 
+def brand_video_request(image_keys: list[str], prompt: str, render_duration: int, audio: bool) -> dict:
+    """bytedance/seedance-2.0/reference-to-video (fal): image_urls (up to 9, we send 3 to 5), 1080p, 9:16, high bitrate. The keyframe is @Image1."""
+    if not 1 <= len(image_keys) <= 9:
+        raise ValueError("a brand shot needs 1 to 9 reference images")
+    return {"endpoint": falmedia.SEEDANCE2_REF, "arguments": {"prompt": prompt, "image_keys": image_keys, "resolution": "1080p", "duration": str(render_duration),
+                                                               "aspect_ratio": "9:16", "generate_audio": audio, "bitrate_mode": "high"}}
+
+
 def lipsync_request(raw_clip_key: str, shot_audio_key: str, engine: str = "kling", seed_from=None) -> dict:
     if engine == "latentsync":   # fal-ai/latentsync: video_url, audio_url, guidance_scale, seed, loop_mode (fal docs)
         return {"endpoint": falmedia.LATENTSYNC, "arguments": {"video_key": raw_clip_key, "audio_key": shot_audio_key, "guidance_scale": 1.0,
@@ -42,7 +50,9 @@ def resolve_keys(arguments: dict) -> dict:
     """Presign each *_key argument at submit time (never store the URLs)."""
     out = {}
     for name, value in arguments.items():
-        if name in _KEY_TO_URL:
+        if name == "image_keys":
+            out["image_urls"] = [storage.presign_get(k) for k in value]
+        elif name in _KEY_TO_URL:
             out[_KEY_TO_URL[name]] = storage.presign_get(value)
         else:
             out[name] = value

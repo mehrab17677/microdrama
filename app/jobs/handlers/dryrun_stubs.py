@@ -98,9 +98,9 @@ def llm_placement_plan(job):
             ep = conn.execute("select id, beat from episodes where series_id = %s and number = %s", (sid, number)).fetchone()
             if not ep:
                 continue
-            beat = {**ep["beat"], "placement": {"kind": "phone_full", "description": "The lead checks the brand app."}}
+            beat = {**ep["beat"], "placement": {"kind": "product_in_use", "description": "The lead checks the brand app."}}
             conn.execute("update episodes set beat = %s where id = %s", (Jsonb(beat), ep["id"]))
-            conn.execute("insert into placements (series_id, episode_number, kind, description, brand_asset_id) values (%s, %s, 'phone_full', 'The lead checks the brand app.', %s)",
+            conn.execute("insert into placements (series_id, episode_number, kind, description, brand_asset_id) values (%s, %s, 'product_in_use', 'The lead checks the brand app.', %s)",
                          (sid, number, asset and asset["id"]))
     return {}
 

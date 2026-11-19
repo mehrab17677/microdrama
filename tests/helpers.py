@@ -50,3 +50,29 @@ def at_gate(n):
 
 def is_status(*names):
     return lambda s: s["status"] in names
+
+
+# ---------------------------------------------------------------- brand assets for ad placement tests
+
+def screen(seed: int, size=(540, 1170)) -> bytes:
+    """A made-up picture with a gradient, bars and strokes, so a copy that was redrawn or distorted cannot match it by accident."""
+    import io
+
+    import numpy as np
+    from PIL import Image, ImageDraw
+
+    rng = np.random.default_rng(seed)
+    w, h = size
+    px = np.zeros((h, w, 3), dtype=np.uint8)
+    px[:] = (rng.integers(40, 200), rng.integers(40, 200), rng.integers(40, 200))
+    px += (np.linspace(0, 55, h)[:, None, None]).astype(np.uint8)
+    img = Image.fromarray(px)
+    d = ImageDraw.Draw(img)
+    d.rectangle((0, 0, w, 90), fill=(20, 20, 30))
+    for i in range(9):
+        y = 140 + i * (h // 14)
+        d.rounded_rectangle((30, y, w - 30, y + h // 20), 12, fill=(250, 250, 250))
+        d.line((50, y + 20, 50 + int(rng.integers(100, w - 120)), y + 20), fill=(30, 30, 30), width=6)
+    out = io.BytesIO()
+    img.save(out, "PNG")
+    return out.getvalue()

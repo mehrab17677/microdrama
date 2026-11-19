@@ -5,7 +5,9 @@ from app.media.routing import MODEL_KEY_BY_TIER, method_tier, needs_lipsync
 from app.vendors import falmedia
 
 
-def shot_clip_cost(tier: str, planned: float, render: int, line_count: int, fallback_used: bool = False) -> float:
+def shot_clip_cost(tier: str, planned: float, render: int, line_count: int, fallback_used: bool = False, brand: bool = False) -> float:
+    if brand and tier in ("A", "B2"):
+        return falmedia.estimate_cost("seedance_2_0_ref", duration=render)
     tier = method_tier(tier, fallback_used, line_count)
     if tier == "INSERT":
         return 0.0

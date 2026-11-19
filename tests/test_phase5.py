@@ -79,6 +79,25 @@ def brief(**over):
     return data, files
 
 
+LABELS = "Vaseline\nLip Therapy\nOriginal"
+DESCRIPTION = ("A small round lip balm tin with a screw lid. A person twists off the lid, takes a little of the balm on a fingertip and smooths it over their lips, then closes the lid "
+               "again. It is a plain everyday lip care product, used a few times a day.")
+
+
+def ad_brief(kinds=("product_in_use", "product_shown"), **over):
+    """An ad placement brief with a complete brand pack: details, a logo and real product photos."""
+    from helpers import screen
+
+    data, files = brief(data={"category": "ad_placement", "brand_name": "Vaseline", "product": "Lip Therapy Original 20 g tin", "placement_types": list(kinds),
+                              "frequency_note": "every 3rd episode", "exclusions": "scams", "forbidden_claims": "cures chapped lips, medical", "spoken_wording": "",
+                              "product_description": DESCRIPTION, "product_physical": "Round tin about 5 cm across, blue lid, white print", "label_texts": LABELS,
+                              "min_exposure_seconds": "3", "brand_color": "#1A2B3C", "brand_kinds": ["logo", "product", "product"], "brand_labels": ["Logo", "Tin front", "Tin back"],
+                              "brand_views": ["front", "front", "back"], **over})
+    files += [("brand_files", ("logo.png", screen(51, (400, 400)), "image/png")), ("brand_files", ("front.png", screen(52, (900, 1200)), "image/png")),
+              ("brand_files", ("back.png", screen(53, (900, 1200)), "image/png"))]
+    return data, files
+
+
 def start(c, **over) -> uuid.UUID:
     data, files = brief(**over)
     r = c.post("/productions", data=data, files=files, headers={"accept": "application/json"})
@@ -614,25 +633,22 @@ def test_ad_placement_needs_a_brand_brief_and_assets(env):
     c = client()
     d, f = brief(data={"category": "ad_placement"})
     text = " | ".join(post_json(c, d, f).json()["errors"])
-    for needle in ("Brand name", "Product", "placement type", "brand asset"):
+    for needle in ("Brand name", "Product", "placement type", "Describe the product", "printed on the product pack", "brand assets"):
         assert needle in text, needle
-    svg = b"<svg xmlns='http://www.w3.org/2000/svg'><rect width='4' height='4'/></svg>"
-    d, f = brief(data={"category": "ad_placement", "brand_name": "Acme", "product": "Pay app", "placement_types": ["phone_full", "spoken"], "frequency_note": "every 5th episode",
-                       "exclusions": "scams, crime", "spoken_wording": "Use Acme Pay", "brand_kinds": ["app_screen"], "brand_labels": ["Home screen"]})
-    shot_png = png()
-    f.append(("brand_files", ("logo.png", shot_png, "image/png")))
+    d, f = ad_brief(kinds=("product_in_use", "spoken"))
     r = post_json(c, d, f)
     assert r.status_code == 303
     sid = uuid.UUID(r.headers["location"].rsplit("/", 1)[1])
     bb = db.fetch_one("select * from brand_briefs where series_id = %s", (sid,))
-    assert (bb["brand_name"], bb["placement_types"], bb["exclusions"], bb["version"]) == ("Acme", ["phone_full", "spoken"], ["scams", "crime"], 1)
-    asset = db.fetch_one("select * from brand_assets where series_id = %s", (sid,))
-    assert asset["kind"] == "app_screen" and asset["r2_key"].endswith(".png")
+    assert (bb["brand_name"], bb["placement_types"], bb["exclusions"], bb["version"]) == ("Vaseline", ["product_in_use", "spoken"], ["scams"], 1)
+    assert bb["label_texts"] == ["Vaseline", "Lip Therapy", "Original"] and bb["forbidden_claims"] == ["cures chapped lips", "medical"] and bb["min_exposure_seconds"] == 3
+    assets = db.fetch_all("select * from brand_assets where series_id = %s order by created_at", (sid,))
+    assert [(a["kind"], a["view"]) for a in assets] == [("logo", "logo"), ("product", "front"), ("product", "back")]
     from app.vendors import storage
     import tempfile, pathlib
     out = pathlib.Path(tempfile.mkdtemp()) / "x.png"
-    storage.get_to_file(asset["r2_key"], out)
-    assert out.read_bytes() == shot_png                                                                  # reproduced exactly as supplied
+    storage.get_to_file(assets[1]["r2_key"], out)
+    assert out.read_bytes() == [x for n, (fn, x, ct) in f if fn == "front.png"][0]                          # reproduced exactly as supplied
 
 
 def test_a_valid_brief_creates_everything_in_one_go(env):

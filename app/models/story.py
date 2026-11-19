@@ -48,7 +48,7 @@ class StoryBible(BaseModel):
 
 
 class PlacementBeat(BaseModel):
-    kind: str                    # phone_full | product_full | phone_in_hand | signage | spoken
+    kind: str                    # product_in_use | product_shown | product_ambient | logo_in_scene | spoken
     description: str
 
 

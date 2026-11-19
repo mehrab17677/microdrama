@@ -424,7 +424,7 @@ def fit_durations(state):
         dur = {l["id"]: float(l["duration_seconds"]) for l in lines}
         shots = db.fetch_all("select id, idx, tier, line_ids, spec from shots where episode_id = %s order by idx", (e["id"],))
         fitted = durations.fit_episode(
-            [{"idx": s["idx"], "tier": s["tier"], "line_durations": [dur[i] for i in s["line_ids"]], "est_seconds": s["spec"].get("est_seconds"), "fixed": s["spec"].get("placement_kind") in ("phone_full", "product_full")} for s in shots], timing)
+            [{"idx": s["idx"], "tier": s["tier"], "line_durations": [dur[i] for i in s["line_ids"]], "est_seconds": s["spec"].get("est_seconds"), "fixed": bool(s["spec"].get("brand"))} for s in shots], timing)
         if fitted["too_long"]:
             if common.count_notes(sid, f"shots_redo:{e['number']}") >= 2:
                 common.fail_series(sid, "fit_durations", f"episode {e['number']} still has a shot over 10 s after redoing the shot list")
@@ -632,6 +632,10 @@ def apply_feedback(state):
             fb = Jsonb({"feedback_id": str(f["id"])})
             status_for_episode = "rendered"
             for s in conn.execute("select * from shots where id = any(%s)", (f["shot_ids"],)).fetchall():
+                if cat in ("picture", "brand", "lipsync", "voice"):
+                    from app import placement
+
+                    placement.reset_for_shot(conn, s["id"])   # the shot is rendered again: a placement approval no longer holds
                 if cat in ("picture", "brand"):
                     new = "keyframe_ready" if s["tier"] == "INSERT" else "planned"   # an insert has no keyframe: it is rebuilt from the plate
                     conn.execute("update shots set status = %s, attempts = 0, sync_attempts = 0, fallback_used = false, keyframe_r2_key = null, raw_clip_r2_key = null,"

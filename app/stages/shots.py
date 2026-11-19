@@ -37,7 +37,7 @@ Rules:
 - sounds lists the sound effects heard in the shot, as short phrases. Never put music or speech there.
 - action describes what the camera sees and what people do. Never put on-screen text in it.
 - placement_kind is the placement from the plan when the shot carries one, otherwise null.
-- Brand placements (only when the episode material lists one): a phone_full or product_full placement is its OWN shot: shot_type static_insert, placement_kind set, NO characters and NO lines. It shows the brand's real screens or product images full frame and is placed right after the shot where a character lifts the phone or shows the product. Give it est_seconds of at least 1 second per image (2 to 10). A spoken placement is placement_kind 'spoken' on the shot that carries the brand wording. phone_in_hand and signage placements set placement_kind on the shot where the phone or sign is visible."""
+- Brand placements (only when the episode material lists one): the brand's real product appears INSIDE a normal scene, drawn by the video model. Put the placement on ONE shot of the scene where it is natural: set placement_kind to the planned kind. That shot is a non_speaking shot or a speaking_wider shot (never a close-up, a hero shot or a static_insert), shows the product being used the way the story needs, and runs long enough for it to be read (est_seconds of at least the minimum given, for a non-speaking shot). Describe what the people do with the product in action, without naming the brand or any printed text. A spoken placement is placement_kind 'spoken' on the shot that carries the brand wording."""
 
 
 # ---------------------------------------------------------------- context
@@ -109,12 +109,14 @@ def episode_placements(sid, number: int) -> list[dict]:
 def placement_block(sid, number: int) -> str:
     from app import placement
 
+    brief = placement.brief(sid) or {}
+    minimum = float(brief.get("min_exposure_seconds") or 3)
     lines = []
     for p in episode_placements(sid, number):
-        n = len(placement.asset_rows(sid, placement.FULL_FRAME[p["kind"]])) if p["kind"] in placement.FULL_FRAME else 0
-        extra = f" ({n} image(s) to show, so est_seconds of at least {max(2, round(n * placement.MIN_HOLD + 0.499))})" if n else ""
+        extra = f" (the shot needs est_seconds of at least {min(10, minimum + 1):g} so the product can be read)" if p["kind"] in placement.VISUAL else ""
         lines.append(f"- {p['kind']}{extra}: {p['description']}")
-    return "Brand placement planned for this episode (the shot list must include it):\n" + "\n".join(lines)
+    product = f"Product: {brief.get('product', '')}. How it is used: {str(brief.get('product_description', ''))[:400]}"
+    return "Brand placement planned for this episode (the shot list must include it):\n" + "\n".join(lines) + "\n" + product
 
 
 # ---------------------------------------------------------------- checks
@@ -143,6 +145,7 @@ def validate_shot_list(sid, episode: dict, shots: list[ShotSpec], known_setups: 
     from app import placement
 
     planned_kinds = {p["kind"] for p in episode_placements(sid, episode["number"])}
+    minimum = float((placement.brief(sid) or {}).get("min_exposure_seconds") or 3)
     for kind in sorted(planned_kinds):
         if not any(s.placement_kind == kind for s in shots):
             problems.append(f"the episode's {kind} placement is missing: add a shot with placement_kind '{kind}'")
@@ -181,14 +184,15 @@ def validate_shot_list(sid, episode: dict, shots: list[ShotSpec], known_setups: 
             problems.append(f"{tag}: nobody speaks in it, so mouth_visible_speaking must be false")
         if s.placement_kind and s.placement_kind not in planned_kinds:
             problems.append(f"{tag}: placement_kind {s.placement_kind!r} is not in this episode's placement plan")
-        if s.placement_kind in placement.FULL_FRAME and (s.shot_type != "static_insert" or speaking or s.characters):
-            problems.append(f"{tag}: a {s.placement_kind} placement is a static_insert with no characters and no lines")
-        if s.placement_kind in placement.FULL_FRAME and s.shot_type == "static_insert":
-            n = len(placement.asset_rows(sid, placement.FULL_FRAME[s.placement_kind]))
-            if not 2 <= s.est_seconds <= 10:
-                problems.append(f"{tag}: est_seconds must be between 2 and 10, not {s.est_seconds}")
-            elif n and s.est_seconds / n < placement.MIN_HOLD:
-                problems.append(f"{tag}: {n} image(s) need at least {n * placement.MIN_HOLD:.1f} seconds, not {s.est_seconds}")
+        if s.placement_kind in placement.VISUAL:
+            if s.shot_type not in ("non_speaking", "speaking_wider"):
+                problems.append(f"{tag}: a brand shot is a non_speaking or speaking_wider shot, not {s.shot_type}")
+            if s.shot_type == "non_speaking" and s.est_seconds < min(10, minimum + 1):
+                problems.append(f"{tag}: the product needs at least {min(10, minimum + 1):g} seconds on screen to be read, not {s.est_seconds}")
+            if s.placement_kind in ("product_in_use", "product_shown") and not s.characters:
+                problems.append(f"{tag}: a {s.placement_kind} shot needs the character who handles the product")
+        if s.placement_kind == "spoken" and not speaking:
+            problems.append(f"{tag}: a spoken placement is on a shot with lines")
         name = s.camera_setup_name.strip()
         if s.new_setup is not None:
             if s.new_setup.name.strip() != name:
@@ -237,7 +241,7 @@ def persist_shot_list(sid, episode: dict, shots: list[ShotSpec], genre_id) -> li
             speaker = next((c for c in s.characters if c.mouth_visible_speaking), None) if s.line_indexes else None
             first_emotion = lines[s.line_indexes[0]]["emotion"] if s.line_indexes else None
             group = emotion_group_for(sid, speaker.code if speaker else (s.characters[0].code if s.characters else None), first_emotion)
-            spec = {**s.model_dump(), "emotion_group": group}
+            spec = {**s.model_dump(), "emotion_group": group, **({"brand": True} if s.placement_kind in ("product_in_use", "product_shown", "product_ambient", "logo_in_scene") else {})}
             tier = tier_for(s.shot_type)
             conn.execute(
                 "insert into shots (series_id, episode_id, idx, shot_type, tier, camera_setup_id, set_id, spec, line_ids, speaker_character_id, status)"
@@ -298,32 +302,27 @@ def fixture_shot_list(sid, episode: dict) -> ShotList:
     shots[0] = shots[0].model_copy(update={"is_hook": True})
     shots[-1] = shots[-1].model_copy(update={"is_cliffhanger": True})
     shots = _with_placements(sid, episode, shots, setup, hi)
-    return ShotList(episode_number=episode["number"], shots=shots)
+    return ShotList(episode_number=episode["number"], shots=[s.model_copy(update={"idx": i}) for i, s in enumerate(shots)])
 
 
 def _with_placements(sid, episode: dict, shots: list[ShotSpec], setup, hi: int) -> list[ShotSpec]:
-    """The planned brand placements: a full-frame insert after the first shot (replacing a plain non-speaking shot if the list is already full),
-    a spoken mention on the first speaking shot, a composited kind on the first non-speaking shot."""
+    """Mark the shots that carry the planned brand placements: a non-speaking shot in the middle for a visual kind (so it can run long enough), the first
+    speaking shot for a spoken mention."""
     from app import placement
 
     for p in episode_placements(sid, episode["number"]):
         kind = p["kind"]
-        if kind in placement.FULL_FRAME:
-            n = len(placement.asset_rows(sid, placement.FULL_FRAME[kind]))
-            insert = ShotSpec(idx=0, shot_type="static_insert", scene_index=shots[0].scene_index, set_code=shots[0].set_code, time_of_day=shots[0].time_of_day,
-                              camera_setup_name=setup.name, new_setup=setup, characters=[], line_indexes=[], action="The brand's real screens, full frame.", sounds=[],
-                              is_hook=False, is_cliffhanger=False, placement_kind=kind, est_seconds=float(min(10, max(3, n * 2))))
-            if len(shots) >= hi:   # make room: a plain non-speaking shot in the middle goes
-                drop = next(i for i in range(1, len(shots) - 1) if not shots[i].line_indexes)
-                shots = shots[:drop] + shots[drop + 1:]
-            shots = shots[:2] + [insert] + shots[2:]
-        elif kind == "spoken":
+        if kind == "spoken":
             i = next((i for i, s in enumerate(shots) if s.line_indexes), 0)
             shots[i] = shots[i].model_copy(update={"placement_kind": kind})
-        else:
-            i = next((i for i, s in enumerate(shots) if not s.line_indexes), 0)
-            shots[i] = shots[i].model_copy(update={"placement_kind": kind})
-    return [s.model_copy(update={"idx": i}) for i, s in enumerate(shots)]
+            continue
+        i = next((i for i, s in enumerate(shots) if not s.line_indexes and 0 < i < len(shots) - 1), None)
+        if i is None:   # no free non-speaking shot: use a wider speaking shot
+            i = next(i for i, s in enumerate(shots) if s.shot_type == "speaking_wider")
+        shots[i] = shots[i].model_copy(update={"placement_kind": kind, "est_seconds": max(shots[i].est_seconds, 6.0),
+                                              "action": "She takes the product from her bag and uses it naturally while she talks." if kind == "product_in_use"
+                                              else "She holds the product up with its label toward the camera." if kind == "product_shown" else shots[i].action})
+    return shots
 
 
 # ---------------------------------------------------------------- shot requests (llm_shot_request)
@@ -439,4 +438,42 @@ def validate_request(sid, shot: dict, req) -> list[str]:
         sentences = [s for s in text.replace("!", ".").replace("?", ".").split(".") if s.strip()]
         if len(sentences) != 1:
             problems.append(f"a close-up prompt is one sentence of acting direction, not {len(sentences)}")
+    return problems
+
+
+# ---------------------------------------------------------------- brand shot requests: one validated action sentence
+
+MAX_ACTION = 300
+
+
+def validate_brand_action(sid, text: str) -> list[str]:
+    """The compiler's one sentence for a brand shot. Code adds the product lock, motion guard and @Image tags, so this text must carry none of them."""
+    from app.text import contains_term, normalize_for_match
+
+    problems: list[str] = []
+    text = (text or "").strip()
+    if not text:
+        return ["the action sentence is empty"]
+    if len(text) > MAX_ACTION:
+        problems.append(f"the action is {len(text)} characters; the limit is {MAX_ACTION}")
+    sentences = [x for x in text.replace("!", ".").replace("?", ".").split(".") if x.strip()]
+    if len(sentences) != 1:
+        problems.append(f"write exactly one sentence, not {len(sentences)}")
+    if "@" in text or "image" in text.lower() and "reference" in text.lower():
+        problems.append("do not refer to reference images or use @ tags; code adds them")
+    low = text.lower()
+    norm = normalize_for_match(text)
+    for c in db.fetch_all("select code, name from characters where series_id = %s", (sid,)):
+        if c["name"] and c["name"].lower() in low:
+            problems.append(f"the action names the character {c['name']}")
+        if c["code"].lower() in low:
+            problems.append(f"the action contains the character code {c['code']}")
+    brief = db.fetch_one("select brand_name, product, label_texts from brand_briefs where series_id = %s order by version desc limit 1", (sid,))
+    if brief:
+        for term in [brief["brand_name"], brief["product"], *(brief["label_texts"] or [])]:
+            t = normalize_for_match(term)
+            if len(t) >= 3 and contains_term(norm, t):
+                problems.append(f"the action names the brand, the product or printed text ({term!r}); code adds the product description")
+    if any(w in low for w in BAD_TEXT_WORDS):
+        problems.append("the action asks for on-screen text")
     return problems

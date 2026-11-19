@@ -8,6 +8,12 @@ Only the master (prime) portrait exists for each character. Later stages build t
 <form id="decide" method="post" action="/productions/{{ s.id }}/gate/3">
 <input type="hidden" name="voices" value="{{ voices_json }}">
 {% endif %}
+{% if brand %}<section id="brand-pack" style="border-top:1px solid #ddd;margin-top:1.5rem"><h2>Brand pack: {{ brand.brief.brand_name }} · {{ brand.brief.product }}</h2>
+<p>These are your real assets, kept exactly as supplied. They are handed to the models as references; nothing is redrawn from them.</p>
+<div style="display:flex;gap:.6rem;flex-wrap:wrap">{% for a in brand.assets %}<figure style="margin:0;width:130px"><img src="{{ a.url }}" alt="{{ a.label }}" style="width:130px"><figcaption><small>{{ a.label }} · {{ a.kind|replace('_', ' ') }} ({{ a.view }})</small></figcaption></figure>{% endfor %}</div>
+{% if brand.sheet %}<h3>Product sheet (written from the photos)</h3><p>{{ brand.sheet.summary }}</p>
+<p><small>Scale: {{ brand.sheet.scale }} · Material: {{ brand.sheet.material }}<br>Printed elements: {% for e in brand.sheet.elements %}{{ e.text }} ({{ e.position }}){% if not loop.last %}; {% endif %}{% endfor %}<br>Must never change: {{ brand.sheet.never_change|join('; ') }}</small></p>
+{% else %}<p><em>The product sheet is not written yet.</em></p>{% endif %}</section>{% endif %}
 {% for ch in characters %}
 <section style="border-top:1px solid #ddd;margin-top:1.5rem">
 <h2>{{ ch.c.code }} · {{ ch.c.name }} <small>({{ ch.c.role }}{% if ch.c.is_lead %}, lead{% endif %})</small></h2>

@@ -56,6 +56,13 @@ def decide_gate(conn, series_id, user_id, gate: int, decision: str, notes: str =
     if decision not in allowed:
         raise DecisionError(400, f"Gate {gate} accepts: {', '.join(allowed)}.")
 
+    if gate == 5 and decision == "approve":
+        from app import placement
+
+        waiting = placement.unapproved(series_id)
+        if waiting:
+            names = ", ".join(f"episode {w['episode_number']} ({w['kind'].replace('_', ' ')})" for w in waiting)
+            raise DecisionError(400, f"Approve every brand placement against the real assets before the final cut: {names}.")
     if gate == 1:
         if not (story_text or "").strip():
             raise DecisionError(400, "Edit the story, then continue.")

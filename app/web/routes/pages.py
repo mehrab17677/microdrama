@@ -103,8 +103,18 @@ def review_episodes(request: Request, series_id: uuid.UUID, user: dict = Depends
         "user": user, "s": s, "episodes": episodes, "items": items, "gate": gate, "can_decide": can_decide, "categories": feedback.CATEGORIES,
         "rework_left": gate == 4 and used < int(get_config("pilot_rework_rounds")), "rework_used": used, "spend": overview.spend(series_id),
         "projection": overview.projection(series_id) if gate == 4 else None, "confirmed": any(i["status"] == "confirmed" for i in items),
-        "feedback_media": _media, "placements": placement.report(series_id),
+        "feedback_media": _media, "placements": _placement_rows(series_id),
     })
+
+
+def _placement_rows(series_id) -> list[dict]:
+    rows = placement.report(series_id)
+    refs = {k: [{"label": a["label"], "url": _media(series_id, a["r2_key"])} for a in placement.reference_assets(series_id, k)] for k in set(r["kind"] for r in rows)}
+    for r in rows:
+        r["clip_url"] = _media(series_id, r["clip"])
+        r["assets"] = refs.get(r["kind"], [])
+        r["problems"] = (r["fidelity"] or {}).get("problems", [])
+    return rows
 
 
 @router.get("/productions/{series_id}/placements.csv")
@@ -146,6 +156,26 @@ def feedback_confirm(fid: uuid.UUID, ctx: dict = Depends(require_decider), categ
         with db.transaction() as conn:
             feedback.confirm_item(conn, ctx["series"]["id"], fid, ctx["user"]["id"], category or None)
     except feedback.FeedbackError as exc:
+        raise HTTPException(exc.status, exc.detail) from None
+    return RedirectResponse(f"/productions/{ctx['series']['id']}/review/episodes", status_code=303)
+
+
+@router.post("/productions/{series_id}/placements/{pid}/approve")
+def placement_approve(pid: uuid.UUID, ctx: dict = Depends(require_decider), note: str = Form("")):
+    try:
+        with db.transaction() as conn:
+            placement.approve(conn, ctx["series"]["id"], pid, ctx["user"]["id"], note)
+    except placement.PlacementError as exc:
+        raise HTTPException(exc.status, exc.detail) from None
+    return RedirectResponse(f"/productions/{ctx['series']['id']}/review/episodes", status_code=303)
+
+
+@router.post("/productions/{series_id}/placements/{pid}/reject")
+def placement_reject(pid: uuid.UUID, ctx: dict = Depends(require_decider), note: str = Form("")):
+    try:
+        with db.transaction() as conn:
+            placement.reject(conn, ctx["series"]["id"], pid, ctx["user"]["id"], note)
+    except placement.PlacementError as exc:
         raise HTTPException(exc.status, exc.detail) from None
     return RedirectResponse(f"/productions/{ctx['series']['id']}/review/episodes", status_code=303)
 

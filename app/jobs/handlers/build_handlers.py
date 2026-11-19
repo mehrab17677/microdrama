@@ -15,10 +15,11 @@ from app.config import dry_run, get_config
 from app.graphs import common, work
 from app.jobs.errors import PermanentError
 from app.media import compile as media_compile, ffmpeg, requests as media_requests, subtitles
-from app.media.routing import method_tier, model_key as route_model_key, needs_lipsync
+from app.media.routing import method_tier, needs_lipsync, shot_model_key
 from app.models.shots import ShotList, ShotRequest
 from app.qa import face
-from app.stages import look, shots as shots_stage, story
+from app import placement
+from app.stages import brand as brand_stage, look, shots as shots_stage, story
 from app.stages.ingest import _cost_rows
 from app.vendors import eleven, falmedia, images, llm, storage
 
@@ -140,7 +141,25 @@ def keyframe_references(sid, spec: dict) -> tuple[list[bytes], list[str], dict |
     if plate and plate["plate_r2_key"]:
         refs.append(look.fetch_bytes(plate["plate_r2_key"]))
         labels.append(f"the place is reference image {len(refs)}")
+    if spec.get("placement_kind") in placement.VISUAL and (spec.get("brand") or spec.get("placement_kind")):   # a brand shot: the REAL product photos and logo, as supplied
+        products, logo = brand_reference_images(sid, spec["placement_kind"])
+        for data in products:
+            refs.append(data)
+        if products:
+            first = len(refs) - len(products) + 1
+            labels.append("the product is the real product in reference image" + (f"s {first} to {len(refs)}" if len(products) > 1 else f" {first}"))
+        if logo:
+            refs.append(logo)
+            labels.append(f"the brand's real logo is reference image {len(refs)}")
     return refs[: images.MAX_REFERENCES], labels, first_master
+
+
+def brand_reference_images(sid, kind: str) -> tuple[list[bytes], bytes | None]:
+    """The real product photos (front first) and the logo, exactly as supplied."""
+    rows = placement.reference_assets(sid, kind)
+    products = [look.fetch_bytes(r["r2_key"]) for r in rows if r["kind"] != "logo"]
+    logo = next((look.fetch_bytes(r["r2_key"]) for r in rows if r["kind"] == "logo"), None)
+    return products, logo
 
 
 def keyframe_prompt(sid, shot: dict, labels: list[str], try_n: int) -> str:
@@ -159,10 +178,27 @@ def keyframe_prompt(sid, shot: dict, labels: list[str], try_n: int) -> str:
         " ".join(people), f"Action: {spec['action']}",
         "Use the reference images: " + "; ".join(labels) + ".",
         ("Look: " + brief["aesthetic_note"]) if brief and brief.get("aesthetic_note") else "",
-        "No text, no captions, no logos, no watermark.",
+        brand_prompt_block(sid, spec),
+        "No text, no captions, no logos, no watermark." if not spec.get("placement_kind") in placement.VISUAL else "The only text or logo allowed is the one printed on the real product, exactly as in its reference pictures.",
         f"Variation {try_n}." if try_n else "",
     ]
     return " ".join(p for p in parts if p)
+
+
+def brand_prompt_block(sid, spec: dict) -> str:
+    """The product lock for a brand keyframe: the validated product sheet (look only, no brand text) and the kind's rule."""
+    kind = spec.get("placement_kind")
+    if kind not in placement.VISUAL:
+        return ""
+    sheet = brand_stage.get_sheet(sid)
+    minimum = float((placement.brief(sid) or {}).get("min_exposure_seconds") or 3)
+    look_text = (" The product: " + sheet.summary) if sheet else ""
+    rule = {"product_shown": "The product is held toward the camera with its label facing the lens, upright and sharp.",
+            "product_in_use": "The product is in use in the hands, recognisable, with its label visible.",
+            "product_ambient": "The product sits in the scene, clearly visible and in focus.",
+            "logo_in_scene": "The brand's logo appears on a surface in the scene exactly as in its reference picture."}[kind]
+    return (f"{rule}{look_text} It is exactly the product in the reference pictures: same shape, colours, proportions and label; "
+            "never invent, change or garble any printed text or logo; no other brand appears.")
 
 
 def _enforce_keyframe_face() -> bool:
@@ -177,18 +213,28 @@ def image_keyframe(job: dict) -> dict:
     refs, labels, master = keyframe_references(sid, spec)
     floor = get_config("qa_thresholds")["face_match_min"]   # 0.36 (guide 11.1: keyframe_face uses the same threshold)
     usages, png, score, no_face = [], b"", None, False
-    for try_n in range(2):   # one more try when the face does not match the master portrait
+    kind = spec.get("placement_kind") if spec.get("placement_kind") in placement.VISUAL else None
+    brand_problems: list[str] = []
+    vision_usages: list[dict] = []
+    for try_n in range(3 if kind else 2):   # one more try when the face (or, for a brand shot, the product) does not match
         png, usage = images.generate_image(keyframe_prompt(sid, shot, labels, try_n), refs or None)
         usages.append(usage)
-        if not look_handlers_real_faces() or master is None or master["fv"] is None:
+        face_ok = True
+        if look_handlers_real_faces() and master is not None and master["fv"] is not None:
+            vec = face.face_vector(png)
+            if vec is None:
+                no_face = True    # back to the camera or a very wide shot: passes
+            else:
+                score = face.similarity(vec, [float(x) for x in master["fv"].strip("[]").split(",")])
+                face_ok = score >= floor
+        brand_ok = True
+        if kind:   # the real product must already be right in the opening frame
+            brand_ok, brand_problems, v_usage = _brand_keyframe_check(sid, kind, png)
+            vision_usages.append(v_usage)
+        if face_ok and brand_ok:
             break
-        vec = face.face_vector(png)
-        if vec is None:
-            no_face = True    # back to the camera or a very wide shot: passes
-            break
-        score = face.similarity(vec, [float(x) for x in master["fv"].strip("[]").split(",")])
-        if score >= floor:
-            break
+    if kind and not brand_ok:
+        raise PermanentError("the product in the keyframe does not match the real product: " + "; ".join(brand_problems))
     key = f"series/{sid}/episodes/{shot['episode_number']:02d}/shots/{shot['idx']}/keyframe_a{shot['attempts']}.png"
     storage.put_bytes(key, png, "image/png")
     passed = score is None or score >= floor
@@ -206,9 +252,20 @@ def image_keyframe(job: dict) -> dict:
             for other in conn.execute("select id, spec from shots where series_id = %s and status = 'planned' and attempts = 0 and tier <> 'INSERT' and id <> %s", (sid, shot["id"])).fetchall():
                 if work.keyframe_cache_key(other["spec"]) == cache_key:
                     conn.execute("update shots set keyframe_r2_key = %s, status = 'keyframe_ready' where id = %s", (key, other["id"]))
-    cost = sum(u["cost_usd"] for u in usages)
-    return {"keyframe": key, "face_score": score, "references": len(refs), "actual_cost": round(cost, 6),
-            "cost_log": [{"vendor": "openai", "model": u["model"], "units": 1, "unit_name": "image", "cost_usd": u["cost_usd"]} for u in usages]}
+    cost = sum(u["cost_usd"] for u in usages) + sum(u["cost_usd"] for u in vision_usages)
+    return {"keyframe": key, "face_score": score, "references": len(refs), "actual_cost": round(cost, 6), "brand_checked": bool(kind),
+            "cost_log": [{"vendor": "openai", "model": u["model"], "units": 1, "unit_name": "image", "cost_usd": u["cost_usd"]} for u in usages] + _cost_rows(vision_usages)}
+
+
+def _brand_keyframe_check(sid, kind: str, png: bytes) -> tuple[bool, list[str], dict]:
+    from app.qa import brand as brand_qa
+
+    brief = placement.brief(sid)
+    products, logo = brand_reference_images(sid, kind)
+    expected = list(brief["label_texts"])
+    v, usage = brand_qa.check([png], products, logo, kind, expected)
+    ok, _exposure, _category, detail = brand_qa.judge(v, kind, expected, 1, 1.0)
+    return ok, detail["problems"], usage
 
 
 def look_handlers_real_faces() -> bool:
@@ -219,10 +276,37 @@ def look_handlers_real_faces() -> bool:
 
 # ---------------------------------------------------------------- shot request
 
+BRAND_REQUEST_INSTRUCTIONS = ("You write the action for ONE video shot of a vertical micro-drama in which the real product appears. Return a ShotRequest: prompt is ONE sentence "
+                              "(at most 300 characters) saying what the people do and what the camera sees; camera_fixed is true. Refer to people as 'the woman', 'the man'. "
+                              "Never name the brand, the product or any printed text, never mention reference images, never describe the product's look: code adds all of that.")
+
+
+def _brand_shot_request(job: dict, shot: dict) -> dict:
+    sid = job["series_id"]
+    kind = shot["spec"]["placement_kind"]
+    mk = shot_model_key(shot)
+    rules, rule_usage = shots_stage.learned_rules(sid, mk, shot["spec"]["action"])
+    material = (f"Model: {mk}. Brand placement: {kind.replace('_', ' ')}.\nAction in the story: {shot['spec']['action']}\nCamera setup: {shots_stage.camera_text(shot, mk)}"
+                + (("\nRules learned from earlier failures:\n" + "\n".join(f"- {r['rule_text']}" for r in rules)) if rules else ""))
+    out, usage = llm.complete("compiler", BRAND_REQUEST_INSTRUCTIONS + brand_stage.build_action_instructions(kind), [{"role": "user", "content": material + story.notes_block(job)}],
+                              schema=ShotRequest, fixture=lambda: ShotRequest(prompt=_one_sentence(shot["spec"]["action"]), camera_fixed=True))
+    _fail_if(shots_stage.validate_brand_action(sid, out.prompt))
+    if rules:
+        db.execute("update learned_rules set hits = hits + 1 where id = any(%s)", ([r["id"] for r in rules],))
+    return _result([rule_usage, usage], prompt=out.prompt.strip(), camera_fixed=True, brand=True, kind=kind, rule_ids=[str(r["id"]) for r in rules])
+
+
+def _one_sentence(text: str) -> str:
+    t = text.strip().rstrip(".!? ")
+    return (t.split(".")[0] if t else "She holds still") + "."
+
+
 def llm_shot_request(job: dict) -> dict:
     sid = job["series_id"]
     shot = _shot(job)
-    model_key = job["request"].get("model_key") or route_model_key(shot["tier"], shot["fallback_used"], shot["line_count"])
+    if (shot["spec"] or {}).get("brand") and shot["tier"] in ("A", "B2"):
+        return _brand_shot_request(job, shot)
+    model_key = job["request"].get("model_key") or shot_model_key(shot)
     rules, rule_usage = shots_stage.learned_rules(sid, model_key, shot["spec"]["action"])
     material = shots_stage.request_material(sid, shot, model_key, rules)
     out, usage = llm.complete("compiler", shots_stage.REQUEST_INSTRUCTIONS, [{"role": "user", "content": material + story.notes_block(job)}], schema=ShotRequest,
@@ -317,42 +401,20 @@ class Lipsync:
 # ---------------------------------------------------------------- inserts and the compile
 
 def ffmpeg_insert(job: dict) -> dict:
-    """A static insert. A brand placement (phone_full, product_full) shows the brand's real app screens or product images full frame on the brand
-    colour, one after another with hard cuts, each held for planned / n seconds; no video model is involved and the assets are never restyled.
-    Any other static insert is the set plate with a slow zoom (guide 10.8)."""
-    from app import placement
-
+    """A static set insert: the set plate for the shot's planned seconds with a slow zoom (guide 10.8)."""
     sid = job["series_id"]
     shot = _shot(job)
-    kind = (shot["spec"] or {}).get("placement_kind")
+    plate_key = db.fetch_one("select plate_r2_key from sets where id = %s", (shot["set_id"],))["plate_r2_key"]
+    if not plate_key:
+        raise PermanentError("the set has no plate image")
     with tempfile.TemporaryDirectory() as tmp:
-        work_dir, out = Path(tmp), Path(tmp) / "insert.mp4"
-        if kind in placement.FULL_FRAME:
-            rows = placement.asset_rows(sid, placement.FULL_FRAME[kind])
-            if not rows:
-                raise PermanentError(f"the brand has no {placement.FULL_FRAME[kind].replace('_', ' ')} asset for this placement")
-            data = []
-            for r in rows:
-                f = work_dir / "asset"
-                storage.get_to_file(r["r2_key"], f)
-                data.append(f.read_bytes())
-            try:
-                placement.build_insert(data, placement.brand_color(sid), float(shot["planned_duration"]), out, work_dir)
-            except OSError as exc:   # an asset that cannot be read as an image
-                raise PermanentError(f"a brand asset cannot be read as an image: {exc}") from exc
-        else:
-            plate_key = db.fetch_one("select plate_r2_key from sets where id = %s", (shot["set_id"],))["plate_r2_key"]
-            if not plate_key:
-                raise PermanentError("the set has no plate image")
-            plate = work_dir / "plate.png"
-            storage.get_to_file(plate_key, plate)
-            media_compile.set_insert(plate, float(shot["planned_duration"]), out)
+        plate, out = Path(tmp) / "plate.png", Path(tmp) / "insert.mp4"
+        storage.get_to_file(plate_key, plate)
+        media_compile.set_insert(plate, float(shot["planned_duration"]), out)
         key = f"series/{sid}/episodes/{shot['episode_number']:02d}/shots/{shot['idx']}/insert_a{shot['attempts']}.mp4"
         storage.put_file(key, out)
     db.execute("update shots set final_clip_r2_key = %s, status = 'ready' where id = %s", (key, shot["id"]))
-    if kind in placement.FULL_FRAME:
-        placement.mark_placed(sid, shot["id"])
-    return {"placement": kind}
+    return {}
 
 
 def ffmpeg_compile(job: dict) -> dict:

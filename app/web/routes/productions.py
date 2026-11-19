@@ -49,6 +49,12 @@ def create_production(
     exclusions: str = Form(""),
     spoken_wording: str = Form(""),
     brand_color: str = Form("#FFFFFF"),
+    product_description: str = Form(""),
+    product_physical: str = Form(""),
+    label_texts: str = Form(""),
+    forbidden_claims: str = Form(""),
+    min_exposure_seconds: float = Form(3.0),
+    brand_views: list[str] = Form(default=[]),
     brand_kinds: list[str] = Form(default=[]),
     brand_labels: list[str] = Form(default=[]),
     brand_files: list[UploadFile] = File(default=[]),
@@ -61,8 +67,11 @@ def create_production(
         char_refs=[(char_roles[i] if i < len(char_roles) else "", f.file.read()) for i, f in enumerate(chars)],
         aesthetic_refs=[data for _, data in _read(aesthetic_files)],
         brand_name=brand_name, product=product, placement_types=placement_types, frequency_note=frequency_note,
-        exclusions=intake.parse_keywords(exclusions), spoken_wording=spoken_wording, brand_color=brand_color,
-        brand_assets=[((brand_kinds[i] if i < len(brand_kinds) else "product"), (brand_labels[i] if i < len(brand_labels) else ""), name, data)
+        exclusions=intake.parse_keywords(exclusions), spoken_wording=spoken_wording, brand_color=brand_color, product_description=product_description,
+        product_physical=product_physical, label_texts=[t for t in label_texts.splitlines() if t.strip()], forbidden_claims=intake.parse_keywords(forbidden_claims),
+        min_exposure_seconds=min_exposure_seconds,
+        brand_assets=[((brand_kinds[i] if i < len(brand_kinds) else "product"), (brand_labels[i] if i < len(brand_labels) else ""), name, data,
+                       (brand_views[i] if i < len(brand_views) and brand_views[i] else "front"))
                       for i, (name, data) in enumerate(_read(brand_files))],
     )
     problems = intake.validate(form)
@@ -117,6 +126,19 @@ def _media(series_id, key: str | None) -> str | None:
     return f"/media/{series_id}/{key[len(prefix):]}" if key and key.startswith(prefix) else None
 
 
+def _brand_pack(series_id) -> dict | None:
+    """Gate 3: the brand's real assets and the product sheet written from them, for the owner to check."""
+    from app import placement
+    from app.stages import brand
+
+    b = placement.brief(series_id)
+    if b is None:
+        return None
+    sheet = brand.get_sheet(series_id)
+    return {"brief": b, "sheet": sheet, "assets": [{"label": a["label"], "kind": a["kind"], "view": a["view"], "url": _media(series_id, a["r2_key"])}
+                                                    for a in db.fetch_all("select * from brand_assets where series_id = %s order by kind, created_at", (series_id,))]}
+
+
 @router.get("/productions/{series_id}/review/look", response_class=HTMLResponse)
 def review_look(request: Request, series_id: uuid.UUID, user: dict = Depends(get_current_user)):
     """Gate 3 review: each character's pack beside the reference photo, set plates, and a voice sample per speaking character."""
@@ -148,7 +170,7 @@ def review_look(request: Request, series_id: uuid.UUID, user: dict = Depends(get
     can_decide = user["role"] == "admin" or s["owner_id"] == user["id"]
     return templates.TemplateResponse(request, "review_look.html", {
         "user": user, "s": s, "characters": characters, "lineup": lineup and {**lineup, "url": _media(series_id, lineup["r2_key_review"])}, "sets": sets,
-        "skipped_kinds": sorted(images.unsupported_pack_kinds()), "voices_json": json.dumps(voices), "at_gate": s["status"] == "waiting_gate" and s["current_stage"] == "gate3", "can_decide": can_decide,
+        "brand": _brand_pack(series_id), "skipped_kinds": sorted(images.unsupported_pack_kinds()), "voices_json": json.dumps(voices), "at_gate": s["status"] == "waiting_gate" and s["current_stage"] == "gate3", "can_decide": can_decide,
     })
 
 

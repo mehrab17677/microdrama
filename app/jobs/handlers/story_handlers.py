@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from app import db
 from app.jobs.errors import PermanentError
 from app.models.story import (BeatSheetOut, ContinuityReport, EpisodeBeat, EpisodeScript, PlacementPlan, StoryBible, WardrobePlan)
-from app.stages import originality, story, story_fixtures as fx
+from app.stages import brand as brand_stage, originality, story, story_fixtures as fx
 from app.stages.ingest import _cost_rows
 from app.vendors import llm
 
@@ -49,8 +49,8 @@ def llm_bible(job: dict) -> dict:
         "Keywords: " + ", ".join(brief["keywords"]),
         ("Aesthetic note: " + brief["aesthetic_note"]) if brief["aesthetic_note"] else "",
         f"Intake role labels (each becomes one fixed character slot): {json.dumps(ctx['roles'], ensure_ascii=False)}",
-        ("Brand brief (keep the story neutral; the brand appears only through placements): " + json.dumps(
-            {k: ctx["brand"][k] for k in ("brand_name", "product", "placement_types", "frequency_note", "exclusions")}, ensure_ascii=False)) if ctx["brand"] else "",
+        ("Brand brief (keep the story natural; the product appears only through the planned placements, as a normal part of a scene):\n" + brand_stage.data_block(ctx["brand"])
+         + "\n" + json.dumps({k: ctx["brand"][k] for k in ("brand_name", "placement_types", "frequency_note", "exclusions", "forbidden_claims")}, ensure_ascii=False)) if ctx["brand"] else "",
         "Pattern cards (structure only, never names or plot):\n" + "\n".join(f"- [{c['kind']}] {c['title']}: {c['body']}" for c in cards) if cards else "No reference pattern cards are available.",
     ])
     bible, usage = llm.complete("story", story.build_system(story.BIBLE_INSTRUCTIONS, ctx, with_bible=False), _user(material, job), schema=StoryBible,
@@ -112,7 +112,8 @@ def llm_placement_plan(job: dict) -> dict:
         return {"skipped": "no brand brief"}
     beats = {r["number"]: EpisodeBeat.model_validate(r["beat"]) for r in db.fetch_all("select number, beat from episodes where series_id = %s order by number", (sid,))}
     brand = ctx["brand"]
-    material = ("Brand brief:\n" + json.dumps({k: brand[k] for k in ("brand_name", "product", "placement_types", "frequency_note", "exclusions", "spoken_wording")}, ensure_ascii=False)
+    material = ("Brand brief:\n" + brand_stage.data_block(brand) + "\n"
+                + json.dumps({k: brand[k] for k in ("brand_name", "placement_types", "frequency_note", "exclusions", "spoken_wording", "forbidden_claims")}, ensure_ascii=False)
                 + "\n\nBeat sheet:\n" + "\n".join(f"{n}. {b.summary}" for n, b in sorted(beats.items())))
     plan, usage = llm.complete("writer", story.build_system(story.PLACEMENT_INSTRUCTIONS, ctx), _user(material, job), schema=PlacementPlan,
                                fixture=lambda: fx.make_placement(ctx, list(beats)), cache_system=True)
