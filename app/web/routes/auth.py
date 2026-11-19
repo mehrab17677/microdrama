@@ -11,6 +11,7 @@ from app.web import auth
 from app.web.templating import templates
 
 router = APIRouter()
+MAX_FAILED_LOGINS = 5     # per email address in 15 minutes
 
 
 @router.get("/auth/register", response_class=HTMLResponse)
@@ -47,9 +48,15 @@ def login_page(request: Request):
 
 @router.post("/auth/login")
 def login(request: Request, email: str = Form(""), password: str = Form("")):
-    row = db.fetch_one("select id, password_hash, status from users where email = %s", (auth.normalize_email(email),))
+    key = auth.normalize_email(email)
+    recent = db.fetch_one("select count(*) n from audit_log where action = 'auth.login_failed' and detail->>'email' = %s and created_at > now() - interval '15 minutes'", (key,))["n"]
+    if recent >= MAX_FAILED_LOGINS:   # the same answer whether or not the account exists
+        return templates.TemplateResponse(request, "login.html", {"errors": ["Too many failed attempts. Try again in 15 minutes."], "notice": None, "user": None}, status_code=429)
+    row = db.fetch_one("select id, password_hash, status from users where email = %s", (key,))
     ok = auth.verify_password(password, row["password_hash"] if row else None)
     if not ok:
+        with db.transaction() as conn:
+            audit.log(conn, None, "auth.login_failed", None, {"email": key})
         return templates.TemplateResponse(request, "login.html", {"errors": ["Wrong email or password."], "notice": None, "user": None}, status_code=401)
     if row["status"] != UserStatus.active:
         msg = "Your access request is waiting for the admin." if row["status"] == UserStatus.pending else "This account has been disabled."

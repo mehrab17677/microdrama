@@ -201,3 +201,4 @@ def test_require_decider(env):
 def test_html_requests_redirect_to_login(env):
     r = client().get("/", headers={"accept": "text/html"})
     assert r.status_code == 303 and r.headers["location"] == "/auth/login"
+

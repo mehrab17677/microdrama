@@ -3,7 +3,8 @@
     DRY_RUN=0 python scripts/smoke_vendors.py --out DIR --steps openai_text,embeddings,image,seedance --yes-spend
 
 Steps (estimated cost): openai_text (~$0), embeddings (~$0), image (2 images), seedance (4 s silent
-1080p, ~$0.23), avatar (3 s audio, ~$0.35), lipsync (4 s clip, ~$0.07), speech/music (ElevenLabs).
+1080p, ~$0.23), avatar (3 s audio, ~$0.35), lipsync (4 s clip, ~$0.07), latentsync (4 s clip, $0.20),
+brandshot (4 s 720p Seedance 2.0 with a real product photo, ~$1.20; needs SMOKE_PRODUCT_PHOTO), speech/music (ElevenLabs, paid plan).
 It records resolution, frame rate and the path that worked, for docs/VENDOR_NOTES.md.
 """
 from __future__ import annotations
@@ -137,7 +138,37 @@ def step_music(out: Path) -> None:
     RESULTS["music"] = {"probe": probe(out / "music.mp3"), "usage": usage}
 
 
-STEPS = {f.__name__[5:]: f for f in (step_openai_text, step_embeddings, step_image, step_seedance, step_avatar, step_lipsync, step_speech, step_music)}
+def step_brandshot(out: Path) -> None:
+    """One 4 s 720p Seedance 2.0 reference-to-video shot with a REAL product photo and logo (--product-photo, --logo): does fal/ByteDance accept real brand
+    assets, and is the label kept? About $1.20. Look at the result by eye and with the label check before any ad pilot."""
+    import os
+
+    photo, logo = os.environ.get("SMOKE_PRODUCT_PHOTO"), os.environ.get("SMOKE_LOGO")
+    if not photo:
+        raise RuntimeError("set SMOKE_PRODUCT_PHOTO (and SMOKE_LOGO) to the paths of the client's real product photo and logo")
+    refs = [data_uri(Path(photo).read_bytes(), "image/png")] + ([data_uri(Path(logo).read_bytes(), "image/png")] if logo else [])
+    prompt = ("@Image1 shows the exact product: same shape, colours, proportions and label; do not redraw or invent any printed text. "
+              "A woman at a kitchen table takes the product from her bag and holds it up toward the camera for three seconds, label facing the lens. "
+              "The camera is steady. No other text, captions, logos or brands appear. No music. No speech.")
+    args = {"prompt": prompt, "image_urls": refs, "resolution": "720p", "duration": "4", "aspect_ratio": "9:16", "generate_audio": False}
+    rid = falmedia.submit(falmedia.SEEDANCE2_REF, args)
+    payload = wait_for_fal(falmedia.SEEDANCE2_REF, rid)
+    path = falmedia.download(falmedia.video_url(payload), out / "brandshot.mp4")
+    RESULTS["brandshot"] = {"request_id": rid, "probe": probe(path), "estimated_cost": round(4 * 0.3024, 4), "note": "check the label and logo by eye; record whether moderation accepted the real logo"}
+
+
+def step_latentsync(out: Path) -> None:
+    video_url = RESULTS.get("seedance", {}).get("video_url")
+    if not video_url:
+        raise RuntimeError("run the seedance step first")
+    audio = tone(out, 4)
+    rid = falmedia.submit(falmedia.LATENTSYNC, {"video_url": video_url, "audio_url": data_uri(audio.read_bytes(), "audio/mpeg"), "guidance_scale": 1.0, "seed": 1})
+    payload = wait_for_fal(falmedia.LATENTSYNC, rid)
+    path = falmedia.download(falmedia.video_url(payload), out / "latentsync.mp4")
+    RESULTS["latentsync"] = {"request_id": rid, "probe": probe(path), "estimated_cost": falmedia.estimate_cost("latentsync", duration=4)}
+
+
+STEPS = {f.__name__[5:]: f for f in (step_openai_text, step_embeddings, step_image, step_seedance, step_avatar, step_lipsync, step_latentsync, step_brandshot, step_speech, step_music)}
 
 
 def main() -> int:

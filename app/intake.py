@@ -16,6 +16,7 @@ from app.qa import face
 from app.vendors import storage
 
 MIN_SIDE = 512
+MAX_IMAGE_BYTES = 25 * 1024 * 1024   # per uploaded picture
 PLACEMENT_TYPES = ("product_in_use", "product_shown", "product_ambient", "logo_in_scene", "spoken")
 VISUAL_PLACEMENTS = ("product_in_use", "product_shown", "product_ambient", "logo_in_scene")   # drawn by the video model inside a scene
 BRAND_ASSET_KINDS = ("logo", "product", "app_screen")
@@ -155,6 +156,11 @@ def validate(form: IntakeForm) -> list[str]:
     elif form.language == "bn" and os.environ.get("VOICE_BACKEND") == "local":
         problems.append("Bangla is not available in this test setup: the open-source test voice (VOICE_BACKEND=local) speaks English only. "
                         "Choose English, or unset VOICE_BACKEND once the ElevenLabs key is configured.")
+    big = [("Character reference", [d for _, d in form.char_refs]), ("Aesthetic reference", form.aesthetic_refs), ("Brand asset", [a[3] for a in form.brand_assets])]
+    for label, items in big:
+        for i, d in enumerate(items, 1):
+            if len(d) > MAX_IMAGE_BYTES:
+                problems.append(f"{label} {i} is larger than {MAX_IMAGE_BYTES // (1024 * 1024)} MB.")
     # 5. character references
     if not form.char_refs:
         problems.append("Add at least one character reference photo.")

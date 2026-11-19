@@ -1,3 +1,13 @@
 {$PUBLIC_HOST:localhost} {
+	request_body {
+		max_size 250MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy same-origin
+		-Server
+	}
 	reverse_proxy web:8000
 }
