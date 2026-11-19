@@ -35,6 +35,7 @@ app.include_router(media_routes.router)
 app.include_router(production_routes.router)
 app.include_router(pages_routes.router)
 app.include_router(webhook_routes.router)
+app.router.on_startup.append(lambda: __import__("app.logging_setup", fromlist=["setup"]).setup())   # JSON logs; not run by the test client
 
 
 @app.exception_handler(HTTPException)

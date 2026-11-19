@@ -1,4 +1,4 @@
-# One image, four process types, one Postgres, Caddy in front of web (only web is public).
+# One image, five process types, one Postgres, Caddy in front of web (only web is public).
 x-app: &app
   build: .
   env_file: .env
@@ -31,6 +31,9 @@ services:
   poller:
     <<: *app
     command: python -m app.jobs.poller
+  retention:   # daily: deletes raw and failed clips older than raw_retention_days
+    <<: *app
+    command: sh -c "while true; do python -m scripts.retention; sleep 86400; done"
   caddy:
     image: caddy:2
     ports: ["80:80", "443:443"]

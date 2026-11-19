@@ -81,7 +81,9 @@ def tick(status_fn: StatusFn = default_status) -> dict:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    from app import logging_setup
+
+    logging_setup.setup()
     while True:
         try:
             tick()

@@ -31,6 +31,9 @@ def _call_with_retry(fn, job: dict):
 def process(job: dict) -> None:
     """Run one claimed job to its next state."""
     handler = None
+    ctx = {"series_id": job.get("series_id"), "job_id": job["id"], "kind": job["kind"], "vendor": job.get("vendor")}
+    started = time.monotonic()
+    log.info("job started", extra=ctx)
     try:
         handler = get_handler(job["kind"])
         if job["phase"] == "finalize":
@@ -39,10 +42,12 @@ def process(job: dict) -> None:
             ledger.mark_submitted(job["id"], _call_with_retry(handler.submit, job))
         else:
             ledger.succeed(job["id"], _call_with_retry(handler.run, job))
+        log.info("job finished", extra={**ctx, "duration_ms": round((time.monotonic() - started) * 1000)})
     except PermanentError as exc:
+        log.warning("job failed: %s", exc, extra=ctx)
         _failed(job, handler, str(exc))
     except Exception as exc:  # noqa: BLE001 - a bug in a handler must not leave the job stuck
-        log.exception("job %s crashed", job["id"])
+        log.exception("job crashed", extra=ctx)
         _failed(job, handler, f"{type(exc).__name__}: {exc}")
 
 
@@ -75,7 +80,9 @@ def _loop(worker_id: str) -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    from app import logging_setup
+
+    logging_setup.setup()
     from app.jobs.handlers import load_builtin
 
     load_builtin()

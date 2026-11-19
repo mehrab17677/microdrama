@@ -108,3 +108,31 @@ def is_local() -> bool:
 
 def local_file(key: str) -> Path:
     return _local_path(key)
+
+
+def list_objects(prefix: str):
+    """Yields (key, last_modified (aware datetime), size) for every object under `prefix`."""
+    from datetime import datetime, timezone
+
+    if _backend() == "local":
+        root = local_root()
+        base = root / prefix if prefix else root
+        if not base.exists():
+            return
+        for path in ([base] if base.is_file() else base.rglob("*")):   # a prefix may name one file, as in S3
+            if path.is_file():
+                st = path.stat()
+                yield str(path.relative_to(root)), datetime.fromtimestamp(st.st_mtime, tz=timezone.utc), st.st_size
+        return
+    paginator = _s3().get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=get_settings().r2_bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            yield obj["Key"], obj["LastModified"], obj["Size"]
+
+
+def delete(key: str) -> None:
+    _check_key(key)
+    if _backend() == "local":
+        _local_path(key).unlink(missing_ok=True)
+        return
+    _s3().delete_object(Bucket=get_settings().r2_bucket, Key=key)

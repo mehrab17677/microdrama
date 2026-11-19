@@ -157,7 +157,9 @@ def common_lock_key(series_id) -> tuple[int, int]:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    from app import logging_setup
+
+    logging_setup.setup()
     with GraphRunner() as runner:
         while True:
             try:

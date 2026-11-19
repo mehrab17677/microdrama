@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
-from app import audit, budget, db, decisions, events, feedback, overview, placement
+from app import audit, budget, db, decisions, delivery, events, feedback, overview, placement
 from app.web.deps import get_current_user, require_decider
 from app.web.templating import templates
 
@@ -115,6 +115,34 @@ def _placement_rows(series_id) -> list[dict]:
         r["assets"] = refs.get(r["kind"], [])
         r["problems"] = (r["fidelity"] or {}).get("problems", [])
     return rows
+
+
+@router.get("/productions/{series_id}/delivery", response_class=HTMLResponse)
+def delivery_page(request: Request, series_id: uuid.UUID, user: dict = Depends(get_current_user)):
+    s = db.fetch_one("select s.*, u.display_name owner_name from series s join users u on u.id = s.owner_id where s.id = %s", (series_id,))
+    if s is None:
+        raise HTTPException(404, "Production not found.")
+    return templates.TemplateResponse(request, "delivery.html", {"user": user, "s": s, "files": delivery.files(series_id), "done": s["status"] == "done", "spend": overview.spend(series_id)})
+
+
+def _csv(name: str, text: str):
+    from fastapi.responses import Response
+
+    return Response(text, media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@router.get("/productions/{series_id}/delivery/cost.csv")
+def cost_report(series_id: uuid.UUID, user: dict = Depends(get_current_user)):
+    if not db.fetch_one("select 1 from series where id = %s", (series_id,)):
+        raise HTTPException(404, "Production not found.")
+    return _csv(f"cost-report-{series_id}.csv", delivery.cost_report_csv(series_id))
+
+
+@router.get("/productions/{series_id}/delivery/qa.csv")
+def qa_report(series_id: uuid.UUID, user: dict = Depends(get_current_user)):
+    if not db.fetch_one("select 1 from series where id = %s", (series_id,)):
+        raise HTTPException(404, "Production not found.")
+    return _csv(f"qa-report-{series_id}.csv", delivery.qa_report_csv(series_id))
 
 
 @router.get("/productions/{series_id}/placements.csv")
