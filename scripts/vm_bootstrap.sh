@@ -53,7 +53,12 @@ PY
 then
   read -rp "Admin email: " ADMIN_EMAIL
   read -rp "Admin name: " ADMIN_NAME
-  sudo docker compose run --rm web python -m scripts.create_admin --email "$ADMIN_EMAIL" --name "$ADMIN_NAME"
+  echo "The password needs at least 8 characters (nothing shows while you type)."
+  for attempt in 1 2 3; do
+    if sudo docker compose run --rm web python -m scripts.create_admin --email "$ADMIN_EMAIL" --name "$ADMIN_NAME"; then break; fi
+    [ "$attempt" = 3 ] && { echo "Could not create the admin account. Run this script again."; exit 1; }
+    echo "Try again."
+  done
 fi
 
 echo "== 6/6 Checking and starting =="

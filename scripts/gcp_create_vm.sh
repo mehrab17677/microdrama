@@ -38,7 +38,7 @@ Done. Your server:
 
 Next: connect to it with
   gcloud compute ssh $NAME --zone $ZONE
-and, on the server, run the bootstrap script (see docs/GCP_STAGING_SETUP.md, step 5).
+and, on the server, run the bootstrap script (see docs/GCP_STAGING_SETUP.md, step 6).
 To stop paying for compute between demos:  gcloud compute instances stop $NAME --zone $ZONE
 To start it again:                          gcloud compute instances start $NAME --zone $ZONE
 MSG
