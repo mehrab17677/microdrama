@@ -82,7 +82,7 @@ gcloud compute firewall-rules delete microdrama-staging-web
 - **The page does not load / certificate error:** wait two minutes, then `sudo docker compose logs caddy`. Check the firewall rule exists (`gcloud compute firewall-rules list`) and that you used the `https://` address with dashes, not dots, in the IP part.
 - **"Connection refused" right after step 6:** `sudo docker compose ps`; if `web` is restarting, read `sudo docker compose logs web`.
 - **The build is slow or runs out of disk:** the first build downloads about 2 GB; wait. `df -h` shows disk space; `sudo docker system prune -af` frees old images.
-- **Forgot the admin password:** `cd ~/microdrama && sudo docker compose run --rm web python -m scripts.create_admin --email you@example.com --name "Your Name"` only works once (there is one admin); to reset, ask me and I will give you the exact database command.
+- **"Wrong email or password" / forgot the password:** on the server run `cd ~/microdrama && sudo docker compose run --rm web python -m scripts.reset_password --email you@example.com`. It asks for a new password twice (at least 8 characters; nothing shows as you type) and also lifts the 15-minute lockout that follows 5 wrong tries.
 - **Bills:** Billing → Reports shows what the credit has paid for.
 
 ## When you get credit and budget
