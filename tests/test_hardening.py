@@ -97,3 +97,20 @@ def test_the_compose_file_is_ready_for_a_single_server():
         assert text.startswith("#!/usr/bin/env bash") and "set -euo pipefail" in text
     assert "DRY_RUN=1" in (root / "scripts" / "vm_bootstrap.sh").read_text() and "sslip.io" in (root / "scripts" / "gcp_create_vm.sh").read_text()
     assert (root / "docs" / "GCP_STAGING_SETUP.md").exists()
+
+
+def test_preflight_accepts_ffmpeg_that_gets_harfbuzz_through_libass(monkeypatch):
+    from scripts import preflight
+
+    banner = "configuration: --enable-libx264 --enable-libass --enable-libfribidi"
+    monkeypatch.setattr(preflight.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    def fake_run(cmd, **kw):
+        out = banner if cmd[0] == "ffmpeg" else "libass.so.9 => x\n\tlibharfbuzz.so.0 => y"
+        return type("R", (), {"stdout": out, "returncode": 0})()
+
+    monkeypatch.setattr(preflight.subprocess, "run", fake_run)
+    assert preflight.check_ffmpeg()[0] == preflight.OK
+    monkeypatch.setattr(preflight, "_links_harfbuzz", lambda: False)
+    status, message = preflight.check_ffmpeg()
+    assert status == preflight.FAIL and "libharfbuzz" in message

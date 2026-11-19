@@ -59,9 +59,20 @@ def check_ffmpeg() -> Result:
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
         return FAIL, "ffmpeg/ffprobe not on PATH"
     out = subprocess.run(["ffmpeg", "-hide_banner", "-version"], capture_output=True, text=True).stdout
-    needed = ["--enable-libx264", "--enable-libass", "--enable-libharfbuzz", "--enable-libfribidi"]
+    needed = ["--enable-libx264", "--enable-libass", "--enable-libfribidi"]
     missing = [n.replace("--enable-", "") for n in needed if n not in out]
+    # harfbuzz shapes Bengali conjuncts. Some builds (Debian bookworm) get it through libass and do not list the flag,
+    # so accept either the flag or a linked library. The Bangla caption check below is the real proof.
+    if "--enable-libharfbuzz" not in out and not _links_harfbuzz():
+        missing.append("libharfbuzz")
     return (FAIL, f"ffmpeg is missing: {', '.join(missing)}") if missing else (OK, "libx264, libass, harfbuzz, fribidi present")
+
+
+def _links_harfbuzz() -> bool:
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg or not shutil.which("ldd"):
+        return False
+    return "libharfbuzz" in subprocess.run(["ldd", ffmpeg], capture_output=True, text=True).stdout
 
 
 def check_bangla_caption() -> Result:
