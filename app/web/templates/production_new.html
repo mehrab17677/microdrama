@@ -1,0 +1,48 @@
+{% extends "base.html" %}{% block title %}New production{% endblock %}
+{% block body %}<h1>New production</h1>
+{% if not category %}
+<p>Is this a standard drama or an ad placement drama?</p>
+<p><a href="/productions/new?category=standard"><button type="button">Standard drama</button></a>
+<a href="/productions/new?category=ad_placement"><button type="button" class="quiet">Ad placement drama</button></a></p>
+{% else %}
+{% for e in errors %}<div class="err">{{ e }}</div>{% endfor %}
+<form class="stack" style="max-width:36rem" method="post" action="/productions" enctype="multipart/form-data">
+<input type="hidden" name="category" value="{{ category }}">
+<p><strong>{{ 'Ad placement drama' if category == 'ad_placement' else 'Standard drama' }}</strong> · <a href="/productions/new">change</a></p>
+{% if category == 'ad_placement' %}
+<h2>Brand brief</h2>
+<p><small>The product appears inside the story, drawn by the video model from your real pictures. Give it everything it needs to be shown correctly.</small></p>
+<label>Brand<input name="brand_name"></label>
+<label>Product, with the variant (for example: Lip Therapy, Original, 20 g tin)<input name="product"></label>
+<label>What the product is and how it is used (at least 20 words)<textarea name="product_description" rows="4"></textarea></label>
+<label>Size, shape, colours and packaging (optional but recommended)<textarea name="product_physical" rows="2"></textarea></label>
+<label>Text printed on the pack, one line per entry (the label is checked against this)<textarea name="label_texts" rows="3"></textarea></label>
+<fieldset><legend>Placement types</legend>{% for p in placement_types %}<label><input type="checkbox" name="placement_types" value="{{ p }}"> {{ p|replace('_', ' ') }}</label>{% endfor %}</fieldset>
+<label>How often should placements recur?<input name="frequency_note"></label>
+<label>Minimum seconds the product must be clearly on screen, per placement<input name="min_exposure_seconds" value="3" inputmode="decimal"></label>
+<label>Never show the brand next to (comma separated)<input name="exclusions"></label>
+<label>Claims the story must never make (comma separated)<input name="forbidden_claims"></label>
+<label>Spoken wording (if any)<input name="spoken_wording"></label>
+<label>Brand colour<input name="brand_color" value="#FFFFFF" pattern="#[0-9a-fA-F]{6}"></label>
+<label>Brand assets: your real logo files and real product photos (PNG, JPEG or WebP, product photos at least 800 px)<input type="file" name="brand_files" multiple></label>
+<label>Kind of each asset, in order: logo, product, app_screen<input name="brand_kinds"><small>One value per file in API use; one value applies to the first file here.</small></label>
+<label>View of each product photo, in order: front, back, side, top, open, in_use<input name="brand_views"></label>
+{% endif %}
+<h2>Brief</h2>
+<label>Genre<select name="genre_id" id="genre"><option value="">Choose a genre…</option>{% for g in genres %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}</select></label>
+<label><input type="checkbox" id="notlisted"> My genre is not listed</label>
+<div id="story" hidden><div class="err">{{ alert_text }}</div>
+<label>Genre name<input name="custom_genre"></label>
+<label>Your complete story (named leads, a central conflict, beginning, middle and ending; at least 1,500 words)<textarea name="story_text" rows="8"></textarea></label></div>
+<label>Keywords (3 to 8, separated by commas): tropes, setting, tone<input name="keywords" required></label>
+<label>Dialogue language<select name="language"><option value="">Choose…</option><option value="bn">Bangla</option><option value="en">English</option></select></label>
+<label>Character reference photo (one clear face)<input type="file" name="char_files" multiple></label>
+<label>Role label for each photo, e.g. "female lead"<input name="char_roles"></label>
+<label>Aesthetic reference images (3 or more)<input type="file" name="aesthetic_files" multiple></label>
+<label>Or describe the look: palette, lighting, wardrobe era (20 words or more)<textarea name="aesthetic_note" rows="3"></textarea></label>
+<button>Start production</button></form>
+<script>
+const nl = document.getElementById('notlisted'), story = document.getElementById('story'), genre = document.getElementById('genre');
+nl.addEventListener('change', () => { story.hidden = !nl.checked; genre.disabled = nl.checked; if (nl.checked) genre.value = ''; });
+</script>
+{% endif %}{% endblock %}

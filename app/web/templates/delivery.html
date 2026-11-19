@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% block title %}Delivery{% endblock %}
+{% block bodyattrs %} data-production="{{ s.id }}"{% endblock %}
+{% block body %}<h1>{{ s.title }}: delivery</h1>
+<p><a href="/productions/{{ s.id }}">← Production</a></p>
+{% if not done %}<p class="err">This production is not finished yet ({{ s.status }}). Files appear here when it is done.</p>{% endif %}
+
+<h2>Master</h2>
+{% if files.master %}<p><a id="master" href="{{ files.master }}">Download the master file (all episodes in order)</a></p><video controls playsinline preload="metadata" src="{{ files.master }}" style="max-height:22rem;background:#000"></video>
+{% else %}<p>The master file is not ready.</p>{% endif %}
+
+<h2>Episodes</h2>
+<table id="episodes"><thead><tr><th>Episode</th><th>Length</th><th>Video</th><th>Subtitles</th><th>Marketing copy</th></tr></thead><tbody>
+{% for e in files.episodes %}<tr data-episode="{{ e.number }}"><td>{{ e.number }} <small>cut {{ e.cut }}</small></td><td>{{ '%.0f'|format(e.runtime) }} s</td>
+<td>{% if e.video %}<a href="{{ e.video }}">episode_{{ '%02d'|format(e.number) }}.mp4</a>{% endif %}</td><td>{% if e.subtitles %}<a href="{{ e.subtitles }}">.ass</a>{% endif %}</td>
+<td>{% if e.marketing %}<a href="{{ e.marketing }}">.json</a>{% else %}–{% endif %}</td></tr>{% endfor %}</tbody></table>
+
+<h2>Reports</h2>
+<ul><li><a id="cost" href="/productions/{{ s.id }}/delivery/cost.csv">Cost report (CSV)</a> · total ${{ '%.2f'|format(spend.total_cost) }}</li>
+<li><a id="qa" href="/productions/{{ s.id }}/delivery/qa.csv">QA report (CSV)</a></li>
+{% if files.has_placements %}<li><a id="placements" href="/productions/{{ s.id }}/placements.csv">Placement report for the brand (CSV)</a></li>{% endif %}</ul>
+{% endblock %}

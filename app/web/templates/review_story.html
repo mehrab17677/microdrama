@@ -1,0 +1,48 @@
+{% extends "base.html" %}{% block title %}Story review{% endblock %}
+{% block body %}
+<h1>{{ s.title }}</h1>
+<p><a href="/productions/{{ s.id }}">← Production</a> · {{ s.category }} · {{ s.language }}</p>
+{% if not bible %}<p>The story is not written yet.</p>{% else %}
+<h2>The series</h2>
+<p><strong>{{ bible.logline }}</strong></p>
+<p>Tone: {{ bible.tone }} · Conflict: {{ bible.central_conflict }} · {{ bible.episode_count }} episodes</p>
+<details><summary>Series summary</summary><p>{{ bible.series_summary }}</p></details>
+<h3>Characters</h3>
+<table><tr><th>Code</th><th>Name</th><th>Role</th><th>Look</th></tr>
+{% for c in bible.characters %}<tr><td>{{ c.code }}</td><td>{{ c.name }}{% if c.slot_role %} <small>(your "{{ c.slot_role }}")</small>{% endif %}</td><td>{{ c.role }}{% if c.is_lead %} · lead{% endif %}</td><td>{{ c.visual_description }}</td></tr>{% endfor %}</table>
+<h3>Sets</h3>
+<table><tr><th>Code</th><th>Name</th><th>Times</th><th>Description</th></tr>
+{% for st in bible.sets %}<tr><td>{{ st.code }}</td><td>{{ st.name }}</td><td>{{ st.times_of_day|join(', ') }}</td><td>{{ st.description }}</td></tr>{% endfor %}</table>
+{% endif %}
+
+<h2>Originality</h2>
+{% if originality %}{% set d = originality.detail %}
+<div class="{{ 'ok' if originality.passed else 'err' }}">{{ 'Passed.' if originality.passed else 'Needs attention.' }}
+{% if d.same_story %} The plot looks like an existing story: {{ d.plot_reason }}{% endif %}
+{% if d.rewritten_episodes %} Episodes rewritten once: {{ d.rewritten_episodes|join(', ') }}.{% endif %}</div>
+{% for kind, label in (('blocklist', 'Names or terms from reference material'), ('wording', 'Eight or more words in a row from a source'), ('similarity', 'Too similar to a source')) %}
+{% if d[kind] %}<h4>{{ label }}</h4><ul>{% for h in d[kind] %}<li>Episode {{ h.episode }}{% if h.scene is not none %}, scene {{ h.scene }}{% endif %}{% if h.terms %}: {{ h.terms|join(', ') }}{% endif %}{% if h.similarity %}: {{ h.similarity }}{% endif %}</li>{% endfor %}</ul>{% endif %}{% endfor %}
+{% else %}<p>The originality check has not run yet.</p>{% endif %}
+
+{% if placements %}<h2>Placement plan</h2>
+<table><tr><th>Episode</th><th>Type</th><th>How the brand appears</th></tr>{% for p in placements %}<tr><td>{{ p.episode_number }}</td><td>{{ p.kind }}</td><td>{{ p.description }}</td></tr>{% endfor %}</table>{% endif %}
+
+<h2>Wardrobe plan</h2>
+{% if wardrobe %}<table><tr><th>Character</th><th>Outfit</th><th>Description</th><th>Worn in</th></tr>
+{% for w in wardrobe %}<tr><td>{{ w.character_code }} {{ w.name }}</td><td>{{ w.code }}</td><td>{{ w.description }}</td><td>{{ w.scenes|length }} scene(s)</td></tr>{% endfor %}</table>{% else %}<p>No wardrobe plan yet.</p>{% endif %}
+
+<h2>Beat sheet and scripts</h2>
+{% for e in episodes %}<details><summary><strong>Episode {{ e.number }}</strong> ({{ e.batch }}): {{ e.beat.summary }}</summary>
+<p><em>Hook:</em> {{ e.beat.hook }}<br><em>Cliffhanger:</em> {{ e.beat.cliffhanger }}</p>
+{% if e.script %}{% for sc in e.script.scenes %}<p><small>Scene {{ sc.index }} · {{ sc.set_code }} · {{ sc.time_of_day }}: {{ sc.action }}</small></p>
+{% for l in sc.lines %}<p style="margin:.1rem 0 .1rem 1rem"><strong>{{ l.character_code }}</strong> <small>({{ l.emotion }})</small> {{ l.text }}</p>{% endfor %}{% endfor %}{% else %}<p>No script yet.</p>{% endif %}
+</details>{% endfor %}
+
+{% if at_gate and can_decide %}
+<h2>Your decision</h2>
+<form class="stack" method="post" action="/productions/{{ s.id }}/gate/2" style="max-width:30rem">
+<label>Notes (needed to reject)<textarea name="notes" rows="3"></textarea></label>
+<label>If rejecting, what should be redone?<select name="target"><option value="">Choose…</option><option value="bible">The story bible (everything after it too)</option><option value="beats">The beat sheet and scripts</option><option value="scripts">Only the scripts</option></select></label>
+<div><button name="decision" value="approve">Approve the story</button> <button class="quiet" name="decision" value="reject">Reject</button></div></form>
+{% endif %}
+{% endblock %}

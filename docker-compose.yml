@@ -1,0 +1,45 @@
+# One image, five process types, one Postgres, Caddy in front of web (only web is public).
+x-app: &app
+  build: .
+  env_file: .env
+  environment:
+    DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/microdrama}
+  depends_on: [db]
+  restart: unless-stopped
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: microdrama
+    volumes: [dbdata:/var/lib/postgresql/data]
+  migrate:
+    <<: *app
+    command: sh -c "python scripts/migrate.py && python scripts/seed_config.py"
+    restart: "no"
+  web:
+    <<: *app
+    command: uvicorn app.web.main:app --host 0.0.0.0 --port 8000
+  worker:
+    <<: *app
+    command: python -m app.jobs.worker
+    deploy: {replicas: 2}
+  runner:
+    <<: *app
+    command: python -m app.graphs.runner
+  poller:
+    <<: *app
+    command: python -m app.jobs.poller
+  retention:   # daily: deletes raw and failed clips older than raw_retention_days
+    <<: *app
+    command: sh -c "while true; do python -m scripts.retention; sleep 86400; done"
+  caddy:
+    image: caddy:2
+    ports: ["80:80", "443:443"]
+    volumes: ["./Caddyfile:/etc/caddy/Caddyfile:ro", "caddydata:/data"]
+    depends_on: [web]
+
+volumes:
+  dbdata:
+  caddydata:
