@@ -14,16 +14,20 @@ PROJECT="$(gcloud config get-value project 2>/dev/null)"
 echo "Project: $PROJECT   Zone: $ZONE   Machine: $MACHINE"
 gcloud services enable compute.googleapis.com
 
-gcloud compute addresses describe "$NAME-ip" --region "$REGION" >/dev/null 2>&1 || gcloud compute addresses create "$NAME-ip" --region "$REGION"
+# Safe to run again: each piece is created only if a list query does not already show it.
+exists() { [ -n "$("$@" --format='value(name)' 2>/dev/null)" ]; }
+
+if exists gcloud compute addresses list --filter="name=$NAME-ip AND region:$REGION"; then echo "IP address $NAME-ip already exists, reusing it"
+else gcloud compute addresses create "$NAME-ip" --region "$REGION"; fi
 IP="$(gcloud compute addresses describe "$NAME-ip" --region "$REGION" --format='get(address)')"
 
-gcloud compute firewall-rules describe "$NAME-web" >/dev/null 2>&1 || \
-  gcloud compute firewall-rules create "$NAME-web" --direction=INGRESS --allow=tcp:80,tcp:443 --target-tags="$NAME" --description="Web traffic for $NAME"
+if exists gcloud compute firewall-rules list --filter="name=$NAME-web"; then echo "Firewall rule $NAME-web already exists, reusing it"
+else gcloud compute firewall-rules create "$NAME-web" --direction=INGRESS --allow=tcp:80,tcp:443 --target-tags="$NAME" --description="Web traffic for $NAME"; fi
 
-gcloud compute instances describe "$NAME" --zone "$ZONE" >/dev/null 2>&1 || \
-  gcloud compute instances create "$NAME" --zone "$ZONE" --machine-type "$MACHINE" \
+if exists gcloud compute instances list --filter="name=$NAME AND zone:$ZONE"; then echo "Server $NAME already exists, reusing it"
+else gcloud compute instances create "$NAME" --zone "$ZONE" --machine-type "$MACHINE" \
     --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud \
-    --boot-disk-size=40GB --boot-disk-type=pd-balanced --address="$IP" --tags="$NAME"
+    --boot-disk-size=40GB --boot-disk-type=pd-balanced --address="$IP" --tags="$NAME"; fi
 
 HOST="$(echo "$IP" | tr . -).sslip.io"
 cat <<MSG

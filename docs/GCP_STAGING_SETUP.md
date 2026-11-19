@@ -32,6 +32,7 @@ git clone --branch claude/affectionate-goodall-r14vry https://github.com/mehrab1
 cd microdrama
 bash scripts/gcp_create_vm.sh
 ```
+If you see `destination path 'microdrama' already exists`, you ran this before. Use `cd ~/microdrama && git pull` instead of the clone line. The script is safe to run again: anything it already created ("already exists") is reused, not an error.
 If it says the Compute Engine API needs enabling, wait a minute and run the last line again. It creates a fixed IP address, a firewall rule for web traffic, and the server, then prints **your web address**, for example `https://34-12-56-78.sslip.io`. Write it down.
 (To use another region or a bigger machine: `ZONE=europe-west1-b MACHINE=e2-standard-4 bash scripts/gcp_create_vm.sh`.)
 
