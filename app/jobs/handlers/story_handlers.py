@@ -53,7 +53,7 @@ def llm_bible(job: dict) -> dict:
          + "\n" + json.dumps({k: ctx["brand"][k] for k in ("brand_name", "placement_types", "frequency_note", "exclusions", "forbidden_claims")}, ensure_ascii=False)) if ctx["brand"] else "",
         "Pattern cards (structure only, never names or plot):\n" + "\n".join(f"- [{c['kind']}] {c['title']}: {c['body']}" for c in cards) if cards else "No reference pattern cards are available.",
     ])
-    bible, usage = llm.complete("story", story.build_system(story.BIBLE_INSTRUCTIONS, ctx, with_bible=False), _user(material, job), schema=StoryBible,
+    bible, usage = llm.complete("story", story.build_system(story.BIBLE_INSTRUCTIONS, ctx, with_bible=False), _user(material + ("\n" + story.episode_count_note()).rstrip(), job), schema=StoryBible,
                                 fixture=lambda: fx.make_bible(ctx))
     _fail_if(story.validate_bible(bible, ctx["roles"], story.blocklist(sid)))
     story.persist_bible(sid, bible)

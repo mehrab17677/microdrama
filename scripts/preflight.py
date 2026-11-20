@@ -258,8 +258,12 @@ def run_all(dry_run: bool | None = None) -> list[tuple[str, str, str]]:
     results = []
     for name, fn in CORE:
         results.append((name, *_safe(fn)))
+    from app.config import live_llm_roles
+
+    live = bool(live_llm_roles())    # a demo run: DRY_RUN=1 with some language-model roles real, so the Anthropic key is checked
     for name, fn in VENDOR:
-        results.append((name, SKIP, "dry-run: vendor not contacted") if dry else (name, *_safe(fn)))
+        skip = dry and not (live and name == "anthropic")
+        results.append((name, SKIP, "dry-run: vendor not contacted") if skip else (name, *_safe(fn)))
     return results
 
 

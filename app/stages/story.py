@@ -99,6 +99,14 @@ def bible_text(ctx) -> str:
     return json.dumps(ctx["bible"].model_dump(), ensure_ascii=False, indent=1) if ctx["bible"] else ""
 
 
+def episode_count_note() -> str:
+    """When the allowed range is narrower than the guide's 45 to 50 (a short demo run), say so; the fixed text above says 45."""
+    lo, hi = get_config("episode_count_range")
+    if lo <= 45 <= hi:
+        return ""
+    return f"Episode count for THIS run: choose episode_count between {lo} and {hi} (this replaces the default of 45; plan the whole arc to fit that count)."
+
+
 def build_system(instructions: str, ctx: dict, with_bible: bool = True) -> str:
     """Prompt order (guide 9.2): fixed stage instructions, Story Bible JSON, series summary; the stage-specific
     material and reviewer notes go in the user message. The shared prefix is identical across calls, so it caches."""
