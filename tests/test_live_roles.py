@@ -89,4 +89,20 @@ def test_the_demo_switch_script_is_valid_and_keeps_the_key_off_the_command_line(
     assert subprocess.run(["bash", "-n", str(path)]).returncode == 0
     text = path.read_text()
     assert "read -rsp" in text and "chmod 600 .env" in text and "set -euo pipefail" in text
-    assert "orchestr" not in text and 'LIVE_ROLES="story,writer,originality,director,copy"' in text
+    assert "orchestr" not in text and 'LIVE_ROLES="story,writer,originality,director,copy,product_sheet"' in text
+
+
+def test_a_role_missing_from_an_older_database_falls_back_to_the_shipped_default(env):
+    import pytest
+
+    from app import db
+    from app.jobs.errors import PermanentError
+
+    db.execute("update config set value = value - 'product_sheet' where key = 'llm_roles'")
+    from app.config import _CACHE
+
+    _CACHE.clear()
+    assert llm.model_for_role("product_sheet") == "anthropic:claude-sonnet-5-5"
+    with pytest.raises(PermanentError):
+        llm.model_for_role("no_such_role")
+    assert llm.model_for_role("vision_qa_strong") == "anthropic:claude-sonnet-5-5"        # the shot judges are a separate role

@@ -14,6 +14,7 @@ CONFIG_DEFAULTS: dict[str, tuple[object, str]] = {
             "compiler": "anthropic:claude-sonnet-5-5",
             "vision_qa": "anthropic:claude-haiku-5-5",
             "vision_qa_strong": "anthropic:claude-sonnet-5-5",
+            "product_sheet": "anthropic:claude-sonnet-5-5",    # reads the real product photos once; its own role so a demo can run it live without making the shot judges live
             "rule_writer": "anthropic:claude-sonnet-5-5",
             "copy": "openai:gpt-6-luna",
         },
@@ -21,7 +22,7 @@ CONFIG_DEFAULTS: dict[str, tuple[object, str]] = {
     ),
     "llm_max_tokens": (
         {"default": 8000, "story": 16000, "writer": 16000, "director": 16000, "originality": 2000, "compiler": 2000, "vision_qa": 2000,
-         "vision_qa_strong": 2000, "rule_writer": 500, "copy": 4000},
+         "vision_qa_strong": 2000, "product_sheet": 4000, "rule_writer": 500, "copy": 4000},
         "Output token limit per language-model role",
     ),
     "price_book": (

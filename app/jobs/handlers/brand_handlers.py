@@ -23,7 +23,7 @@ def llm_product_sheet(job: dict) -> dict:
     logo = placement.asset_rows(sid, ("logo",))[:1]
     images = [look.fetch_bytes(r["r2_key"]) for r in [*photos, *logo]]
     material = f"{len(photos)} product photo(s), then {len(logo)} logo file.\n\n" + brand.data_block(brief) + story.notes_block(job)
-    sheet, usage = llm.complete("vision_qa_strong", brand.SHEET_INSTRUCTIONS, [{"role": "user", "content": material}], schema=brand.ProductSheet, images=images,
+    sheet, usage = llm.complete("product_sheet", brand.SHEET_INSTRUCTIONS, [{"role": "user", "content": material}], schema=brand.ProductSheet, images=images,
                                 fixture=lambda: brand.sheet_fixture(brief))
     problems = brand.validate_sheet(sheet, brief)
     if problems:

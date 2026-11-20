@@ -25,7 +25,13 @@ def model_for_role(role: str) -> str:
     try:
         return roles[role]
     except KeyError:
-        raise PermanentError(f"unknown language-model role {role!r}") from None
+        # A role added after this database was seeded: use the shipped default (seed_config never overwrites an existing row).
+        from app.config_defaults import CONFIG_DEFAULTS
+
+        default = CONFIG_DEFAULTS["llm_roles"][0].get(role)
+        if default is None:
+            raise PermanentError(f"unknown language-model role {role!r}") from None
+        return default
 
 
 def llm_cost(model: str, tokens_in: int, tokens_out: int, price_book: dict | None = None) -> float:

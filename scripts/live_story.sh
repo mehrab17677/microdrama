@@ -3,14 +3,14 @@
 #
 # "on"  : real Claude for the writing and planning roles (story, scripts, originality, shot lists, line tags), on a server that is
 #         otherwise a dry run: images, voices, music, video, lip-sync, the image-judging checks and embeddings stay as samples.
-#         It asks for your Anthropic key (hidden; stored only in ~/microdrama/.env, mode 600), uses Sonnet instead of Opus for the
-#         director and Haiku instead of GPT for the "copy" role (no OpenAI credit needed), and plans a 6 to 8 episode series.
-# "off" : back to a pure dry run and the guide's settings (Opus director, GPT copy, 45 to 50 episodes). The key stays in .env but is unused.
+#         It asks for your Anthropic key (hidden; stored only in ~/microdrama/.env, mode 600), keeps Opus as the director (the guide's
+#         choice), uses Haiku instead of GPT for the "copy" role (no OpenAI credit needed), and plans a 6 to 8 episode series.
+# "off" : back to a pure dry run and the guide's settings (GPT copy, 45 to 50 episodes). The key stays in .env but is unused.
 set -euo pipefail
 MODE="${1:-}"
 cd "${DIR:-$HOME/microdrama}"
 [ -f .env ] || { echo "No .env here. Run scripts/vm_bootstrap.sh first."; exit 1; }
-LIVE_ROLES="story,writer,originality,director,copy"
+LIVE_ROLES="story,writer,originality,director,copy,product_sheet"
 
 setenv() {   # setenv NAME VALUE  (value taken from the environment, never shown on a command line)
   NAME="$1" VALUE="$2" python3 - <<'PY'
@@ -29,9 +29,9 @@ if [ "$MODE" = "on" ]; then
   [ -n "$KEY" ] || { echo "No key entered. Nothing changed."; exit 1; }
   setenv ANTHROPIC_API_KEY "$KEY"; unset KEY
   setenv LIVE_LLM_ROLES "$LIVE_ROLES"
-  sql "update config set value = value || '{\"director\":\"anthropic:claude-sonnet-5-5\",\"copy\":\"anthropic:claude-haiku-5-5\"}'::jsonb where key = 'llm_roles'"
+  sql "update config set value = value || '{\"director\":\"anthropic:claude-opus-5-5\",\"copy\":\"anthropic:claude-haiku-5-5\"}'::jsonb where key = 'llm_roles'"
   sql "update config set value = '[6, 8]'::jsonb where key = 'episode_count_range'"
-  echo "Live roles: $LIVE_ROLES   Director: Sonnet   Copy: Haiku   Episodes: 6 to 8"
+  echo "Live roles: $LIVE_ROLES   Director: Opus   Copy: Haiku   Episodes: 6 to 8"
 elif [ "$MODE" = "off" ]; then
   setenv LIVE_LLM_ROLES ""
   sql "update config set value = value || '{\"director\":\"anthropic:claude-opus-5-5\",\"copy\":\"openai:gpt-6-luna\"}'::jsonb where key = 'llm_roles'"

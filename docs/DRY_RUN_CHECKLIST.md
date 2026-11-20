@@ -35,10 +35,10 @@ In Cloud Shell (the `>_` icon):
 - [ ] **Team**: register a second email in a private window, approve it as admin, sign in as that person.
 
 ## 3b. Optional: the same run with real Claude (needs Anthropic credit)
-See `docs/LIVE_STORY_DEMO.md` (costs about $2 to $5; set a spend limit in the Anthropic console first).
+See `docs/LIVE_STORY_DEMO.md` (costs about $3 to $8; set a spend limit in the Anthropic console first).
 - [ ] On the server: `bash ~/microdrama/scripts/live_story.sh on` (paste the key at the hidden prompt). Preflight shows `OK anthropic`.
 - [ ] Use a short public-domain story as the library source, and a photo you may share.
-- [ ] Run a standard drama. The story, characters, shot lists and line tags are now real; pictures, voices and video are still samples.
+- [ ] Run a standard drama. The story, characters, shot lists, line tags (and, for ads, the product sheet) are now real; pictures, voices and video are still samples.
 - [ ] When done: `bash ~/microdrama/scripts/live_story.sh off`
 
 ## 4. Afterwards
