@@ -114,3 +114,20 @@ def test_preflight_accepts_ffmpeg_that_gets_harfbuzz_through_libass(monkeypatch)
     monkeypatch.setattr(preflight, "_links_harfbuzz", lambda: False)
     status, message = preflight.check_ffmpeg()
     assert status == preflight.FAIL and "libharfbuzz" in message
+
+
+def test_a_password_reset_sets_a_new_password_and_lifts_the_lockout(env):
+    import pytest
+    from scripts import reset_password
+
+    c = anon()
+    for _ in range(intake_limit()):
+        c.post("/auth/login", data={"email": "owner@x.io", "password": "wrong"})
+    assert c.post("/auth/login", data={"email": "owner@x.io", "password": PW}).status_code == 429
+    with pytest.raises(ValueError):
+        reset_password.reset_password("owner@x.io", "short")
+    with pytest.raises(RuntimeError):
+        reset_password.reset_password("nobody@x.io", "a-good-new-password")
+    reset_password.reset_password("Owner@X.io", "a-good-new-password")
+    assert c.post("/auth/login", data={"email": "owner@x.io", "password": PW}).status_code == 401              # the old password is gone
+    assert c.post("/auth/login", data={"email": "owner@x.io", "password": "a-good-new-password"}).status_code == 303

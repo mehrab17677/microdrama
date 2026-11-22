@@ -67,6 +67,13 @@ def dry_run() -> bool:
     return get_settings().dry_run
 
 
+def live_llm_roles() -> frozenset[str]:
+    """Language-model roles that call the real model even under DRY_RUN=1 (env LIVE_LLM_ROLES, comma separated).
+    For stakeholder demos: real story and script text, while images, voices, video and the image-judging checks stay as fixtures.
+    Ignored when DRY_RUN is off (every role is real then)."""
+    return frozenset(r.strip() for r in (_env("LIVE_LLM_ROLES", "") or "").split(",") if r.strip())
+
+
 _CACHE: dict[str, tuple[float, object]] = {}
 _TTL_SECONDS = 30.0
 

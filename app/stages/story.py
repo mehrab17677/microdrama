@@ -99,10 +99,21 @@ def bible_text(ctx) -> str:
     return json.dumps(ctx["bible"].model_dump(), ensure_ascii=False, indent=1) if ctx["bible"] else ""
 
 
+def episode_count_note() -> str:
+    """When the allowed range is narrower than the guide's 45 to 50 (a short demo run), say so; the fixed text above says 45."""
+    lo, hi = get_config("episode_count_range")
+    if lo <= 45 <= hi:
+        return ""
+    return f"Episode count for THIS run: choose episode_count between {lo} and {hi} (this replaces the default of 45; plan the whole arc to fit that count)."
+
+
 def build_system(instructions: str, ctx: dict, with_bible: bool = True) -> str:
     """Prompt order (guide 9.2): fixed stage instructions, Story Bible JSON, series summary; the stage-specific
     material and reviewer notes go in the user message. The shared prefix is identical across calls, so it caches."""
     parts = [instructions, f"Dialogue language: {LANGUAGE_NAME[ctx['language']]}."]
+    forbidden = forbidden_terms_note(ctx["id"])
+    if forbidden:
+        parts.append(forbidden)
     if with_bible and ctx["bible"]:
         parts += ["## Story Bible (JSON)", bible_text(ctx), "## Series summary", ctx["bible"].series_summary]
     return "\n\n".join(parts)
@@ -128,6 +139,19 @@ def previous_errors(job: dict) -> list[str]:
     return [r["error"] for r in rows if r["error"]]
 
 
+ARTICLES = ("the ", "a ", "an ")
+
+
+def meaningful_term(term: str) -> bool:
+    """A blocklist term worth protecting: not a few letters, and not a generic two-word phrase such as 'the night'
+    (an article and one word). Those match ordinary prose and made honest drafts fail; names and distinctive phrases stay."""
+    t = (term or "").strip().lower()
+    if len(t) < 4:
+        return False
+    words = t.split()
+    return not (len(words) <= 2 and t.startswith(ARTICLES))
+
+
 def blocklist(series_id) -> list[str]:
     """Normalised blocklist terms from the library sources the series is pinned to, plus its own story."""
     s = common.get_series(series_id)
@@ -136,7 +160,15 @@ def blocklist(series_id) -> list[str]:
         " where src.status = 'ready' and ((src.series_id is null and src.genre_id = %s and (src.lore_version <= %s or %s is null)) or src.series_id = %s)",
         (s["genre_id"], s["pinned_lore_version"], s["pinned_lore_version"], series_id),
     )
-    return [r["term_normalized"] for r in rows]
+    return [r["term_normalized"] for r in rows if meaningful_term(r["term_normalized"])]
+
+
+def forbidden_terms_note(series_id, limit: int = 120) -> str:
+    """Tell the writer which names and terms the checks will reject, so it avoids them in the first place (the same list the originality check uses)."""
+    terms = sorted(blocklist(series_id))[:limit]
+    if not terms:
+        return ""
+    return "Never use any of these names or terms anywhere (they come from reference material and the originality check rejects them): " + "; ".join(terms) + "."
 
 
 def retrieve_cards(ctx, limit: int = 20) -> tuple[list[dict], dict | None]:

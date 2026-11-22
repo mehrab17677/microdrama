@@ -34,6 +34,58 @@ def tracker(s: dict) -> list[dict]:
     return out
 
 
+# Which job kinds belong to which working stage, so a stage can show "done of total jobs". Gates have no jobs.
+STAGE_KINDS = {
+    "story": ["ingest_source", "llm_story_check", "llm_bible", "llm_beats", "llm_placement_plan", "llm_script", "llm_continuity", "llm_wardrobe", "llm_originality"],
+    "visual": ["llm_trait_sheet", "llm_product_sheet", "llm_voice_profile", "voice_design", "image_master", "image_pack", "image_set_plate", "sfx_ambience"],
+    "build": ["llm_shot_list", "llm_audio_tag", "tts_line", "image_keyframe", "sfx_effect", "music_episode", "llm_shot_request", "video_clip", "lipsync", "ffmpeg_insert", "ffmpeg_compile"],
+    "qa": ["qa_shot", "qa_episode", "qa_brand", "llm_rule"],
+    "delivery": ["ffmpeg_master", "llm_marketing"],
+}
+KIND_STAGE = {kind: stage for stage, kinds in STAGE_KINDS.items() for kind in kinds}
+WAITING_WEIGHT = 0.5      # a gate that is open counts half: the work before it is finished, the decision is not
+
+
+def stage_jobs(series_id) -> dict[str, dict]:
+    """Per working stage: jobs done, failed, active (queued, running or waiting on a vendor) and total, from the job ledger."""
+    out = {stage: {"done": 0, "failed": 0, "active": 0, "total": 0} for stage in STAGE_KINDS}
+    for r in db.fetch_all("select kind, status, count(*) n from jobs where series_id = %s and status <> 'cancelled' group by kind, status", (series_id,)):
+        stage = KIND_STAGE.get(r["kind"])
+        if stage is None:
+            continue
+        bucket = out[stage]
+        bucket["total"] += r["n"]
+        bucket["done" if r["status"] == "succeeded" else "failed" if r["status"] == "failed" else "active"] += r["n"]
+    return out
+
+
+def progress(s: dict, jobs: dict[str, dict] | None = None) -> dict:
+    """What the live production view draws: the overall percentage and, for every stage, its state and job counts.
+    A running stage is drawn as an indeterminate ring (the work behind it is uneven); the counts say how far it has got."""
+    jobs = jobs if jobs is not None else stage_jobs(s["id"])
+    stages = []
+    for st in tracker(s):
+        counts = jobs.get(st["key"], {"done": 0, "failed": 0, "active": 0, "total": 0})
+        stages.append({**st, **counts})
+    cur = STAGES.index(s["current_stage"])
+    if s["status"] == "done":
+        percent = 100.0
+    else:
+        now = stages[cur]
+        if now["state"] == "waiting":
+            fraction = WAITING_WEIGHT
+        elif now["total"]:
+            fraction = min(0.95, now["done"] / now["total"])
+        else:
+            fraction = 0.05 if now["state"] == "running" else 0.0
+        percent = min(99.0, (cur + fraction) / len(STAGES) * 100)
+    failure = None
+    if s["status"] == "failed":
+        row = db.fetch_one("select kind, error from jobs where series_id = %s and status = 'failed' order by coalesce(finished_at, created_at) desc limit 1", (s["id"],))
+        failure = {"kind": row["kind"], "error": row["error"]} if row else {"kind": "", "error": ""}
+    return {"percent": round(percent, 1), "stages": stages, "failure": failure, "running": s["status"] in ("running", "waiting_jobs")}
+
+
 def spend(series_id) -> dict:
     """Per batch: budget, extra approved, spent and the marks at 100% and 125%; plus the total cost from cost_log."""
     rows = db.fetch_all("select * from budgets where series_id = %s order by batch", (series_id,))
@@ -98,9 +150,17 @@ def waiting_for(user: dict) -> list[dict]:
 
 
 def dashboard_rows() -> list[dict]:
-    return [dict(r) for r in db.fetch_all(
+    rows = [dict(r) for r in db.fetch_all(
         "select s.id, s.title, s.category, s.language, s.current_stage, s.status, u.display_name owner_name, s.updated_at,"
         " coalesce((select sum(cost_usd) from cost_log c where c.series_id = s.id), 0) spent from series s join users u on u.id = s.owner_id order by s.updated_at desc")]
+    for r in rows:
+        r["progress"] = progress(r)
+    return rows
+
+
+def recent_productions(limit: int = 8) -> list[dict]:
+    """For the side panel: the latest productions with a status colour."""
+    return [dict(r) for r in db.fetch_all("select id, title, status, current_stage from series order by updated_at desc limit %s", (limit,))]
 
 
 def unread_alerts(user_id) -> int:

@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from app import db, library
 from app.web.deps import get_current_user
@@ -26,15 +26,27 @@ def library_page(request: Request, batch: uuid.UUID | None = None, user: dict = 
 
 @router.post("/library/upload")
 def library_upload(
+    request: Request,
     genre: str = Form(""),
     files: list[UploadFile] = File(default=[]),
     user: dict = Depends(get_current_user),
 ):
     uploads = [(f.filename or "", f.file.read()) for f in files if f.filename]
-    try:
-        batch_id = library.upload_batch(user["id"], genre, uploads)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
+    problems: dict[str, list[str]] = {}
+    if not genre.strip():
+        problems["genre"] = ["Enter the genre these sources belong to, for example revenge romance."]
+    if not uploads:
+        problems["files"] = ["Choose at least one file (.txt, .epub or .pdf)."]
+    batch_id = None
+    if not problems:
+        try:
+            batch_id = library.upload_batch(user["id"], genre, uploads)
+        except ValueError as exc:
+            problems["files" if "file" in str(exc).lower() else "genre"] = [str(exc)]
+    if problems:
+        if "application/json" in request.headers.get("accept", ""):     # the page sends this: it shows each message beside its field and keeps what was typed and chosen
+            return JSONResponse({"errors": [m for ms in problems.values() for m in ms], "fields": problems}, status_code=400)
+        raise HTTPException(400, " ".join(m for ms in problems.values() for m in ms))
     return RedirectResponse(f"/library?batch={batch_id}", status_code=303)
 
 

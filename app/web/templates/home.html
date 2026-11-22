@@ -3,8 +3,9 @@
 {% if waiting %}<section id="waiting" style="background:#fff8e6;border:1px solid #f0d58c;border-radius:8px;padding:.75rem 1rem;margin-bottom:1.25rem">
 <strong>Waiting for you</strong>
 <ul style="margin:.4rem 0 0">{% for w in waiting %}<li><a href="{{ w.link }}">{{ w.title }}</a> · {{ w.what }}</li>{% endfor %}</ul></section>{% endif %}
-<table id="productions" data-watch="{{ watch }}"><thead><tr><th>Title</th><th>Category</th><th>Language</th><th>Owner</th><th>Stage</th><th>Status</th><th>Spend</th></tr></thead><tbody>
+<table id="productions" data-watch="{{ watch }}"><thead><tr><th>Title</th><th>Category</th><th>Language</th><th>Owner</th><th>Progress</th><th>Stage</th><th>Status</th><th>Spend</th></tr></thead><tbody>
 {% for r in rows %}<tr data-series="{{ r.id }}"><td><a href="/productions/{{ r.id }}">{{ r.title or '(untitled)' }}</a></td><td>{{ r.category }}</td><td>{{ r.language }}</td><td>{{ r.owner_name }}</td>
-<td>{{ stage_label(r.current_stage) }}</td><td>{{ r.status }}</td><td>${{ '%.2f'|format(r.spent|float) }}</td></tr>
-{% else %}<tr><td colspan="7">No productions yet. <a href="/productions/new">Start one</a>.</td></tr>{% endfor %}</tbody></table>
+<td><div class="mini" title="{{ r.progress.percent }}%"><div class="bar"><div class="fill" style="width:{{ r.progress.percent }}%{% if r.status == 'failed' %};background:var(--bad){% elif r.status == 'done' %};background:var(--ok){% endif %}"></div></div><small>{{ '%.0f'|format(r.progress.percent) }}%</small></div></td>
+<td>{{ stage_label(r.current_stage) }}</td><td><span class="dot {{ r.status }}" style="display:inline-block;margin-right:.3rem"></span>{{ r.status|replace('_', ' ') }}</td><td>${{ '%.2f'|format(r.spent|float) }}</td></tr>
+{% else %}<tr><td colspan="8">No productions yet. <a href="/productions/new">Start one</a>.</td></tr>{% endfor %}</tbody></table>
 {% endblock %}

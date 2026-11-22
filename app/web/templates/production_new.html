@@ -6,8 +6,9 @@
 <a href="/productions/new?category=ad_placement"><button type="button" class="quiet">Ad placement drama</button></a></p>
 {% else %}
 {% for e in errors %}<div class="err">{{ e }}</div>{% endfor %}
-<form class="stack" style="max-width:36rem" method="post" action="/productions" enctype="multipart/form-data">
+<form class="stack" style="max-width:36rem" method="post" action="/productions" enctype="multipart/form-data" data-inline novalidate>
 <input type="hidden" name="category" value="{{ category }}">
+<input type="hidden" name="leads" value="2">
 <p><strong>{{ 'Ad placement drama' if category == 'ad_placement' else 'Standard drama' }}</strong> · <a href="/productions/new">change</a></p>
 {% if category == 'ad_placement' %}
 <h2>Brand brief</h2>
@@ -23,10 +24,9 @@
 <label>Never show the brand next to (comma separated)<input name="exclusions"></label>
 <label>Claims the story must never make (comma separated)<input name="forbidden_claims"></label>
 <label>Spoken wording (if any)<input name="spoken_wording"></label>
-<label>Brand colour<input name="brand_color" value="#FFFFFF" pattern="#[0-9a-fA-F]{6}"></label>
-<label>Brand assets: your real logo files and real product photos (PNG, JPEG or WebP, product photos at least 800 px)<input type="file" name="brand_files" multiple></label>
-<label>Kind of each asset, in order: logo, product, app_screen<input name="brand_kinds"><small>One value per file in API use; one value applies to the first file here.</small></label>
-<label>View of each product photo, in order: front, back, side, top, open, in_use<input name="brand_views"></label>
+<label>Brand colour<input name="brand_color" value="#FFFFFF"></label>
+<label>Brand assets: your real logo files and real product photos (PNG, JPEG or WebP; product photos at least 800 px)<input type="file" name="brand_files" multiple accept="image/png,image/jpeg,image/webp" data-preview="brand"></label>
+<small class="muted">Each picture gets a kind (logo, product, app screen) and, for product photos, a view. Choose the pictures once or in several rounds, and remove any with ✕.</small>
 {% endif %}
 <h2>Brief</h2>
 <label>Genre<select name="genre_id" id="genre"><option value="">Choose a genre…</option>{% for g in genres %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}</select></label>
@@ -34,11 +34,14 @@
 <div id="story" hidden><div class="err">{{ alert_text }}</div>
 <label>Genre name<input name="custom_genre"></label>
 <label>Your complete story (named leads, a central conflict, beginning, middle and ending; at least 1,500 words)<textarea name="story_text" rows="8"></textarea></label></div>
-<label>Keywords (3 to 8, separated by commas): tropes, setting, tone<input name="keywords" required></label>
+<label>Keywords (3 to 8, separated by commas): tropes, setting, tone<input name="keywords"></label>
 <label>Dialogue language<select name="language"><option value="">Choose…</option><option value="bn">Bangla</option><option value="en">English</option></select></label>
-<label>Character reference photo (one clear face)<input type="file" name="char_files" multiple></label>
-<label>Role label for each photo, e.g. "female lead"<input name="char_roles"></label>
-<label>Aesthetic reference images (3 or more)<input type="file" name="aesthetic_files" multiple></label>
+<h2>The two leads</h2>
+<p><small>One clear photo of each lead (one face, at least 512 px on the short side). The supporting characters need no photo: their character sheets are made from the story.</small></p>
+<label>Male lead photo<input type="file" name="male_photo" accept="image/png,image/jpeg,image/webp" data-preview="photo" data-min="512"></label>
+<label>Female lead photo<input type="file" name="female_photo" accept="image/png,image/jpeg,image/webp" data-preview="photo" data-min="512"></label>
+<h2>Look</h2>
+<label>Aesthetic reference images (3 or more)<input type="file" name="aesthetic_files" multiple accept="image/png,image/jpeg,image/webp" data-preview="photo"></label>
 <label>Or describe the look: palette, lighting, wardrobe era (20 words or more)<textarea name="aesthetic_note" rows="3"></textarea></label>
 <button>Start production</button></form>
 <script>

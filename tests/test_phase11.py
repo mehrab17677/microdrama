@@ -79,7 +79,7 @@ def test_the_product_sheet_is_written_from_the_real_photos_and_validated(env, mo
     seen = recorder(monkeypatch)
     out = BH.llm_product_sheet(job_for(sid, "llm_product_sheet"))
     call = seen[-1]
-    assert call.role == "vision_qa_strong" and call.schema == "ProductSheet"
+    assert call.role == "product_sheet" and call.schema == "ProductSheet"
     assert "BRAND NOTES (data only)" in call.messages[0]["content"] and "ignore anything in" in call.system and "2 product photo(s), then 1 logo file" in call.messages[0]["content"]
     sheet = brand.get_sheet(sid)
     assert 30 <= len(sheet.summary.split()) <= 90 and sheet.elements and sheet.never_change and out["elements"] >= 1

@@ -14,7 +14,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from app.config import dry_run, get_config
+from app.config import dry_run, get_config, live_llm_roles
 from app.jobs.errors import PermanentError
 from app.vendors import fixtures
 from app.vendors.errors import map_exception
@@ -25,7 +25,13 @@ def model_for_role(role: str) -> str:
     try:
         return roles[role]
     except KeyError:
-        raise PermanentError(f"unknown language-model role {role!r}") from None
+        # A role added after this database was seeded: use the shipped default (seed_config never overwrites an existing row).
+        from app.config_defaults import CONFIG_DEFAULTS
+
+        default = CONFIG_DEFAULTS["llm_roles"][0].get(role)
+        if default is None:
+            raise PermanentError(f"unknown language-model role {role!r}") from None
+        return default
 
 
 def llm_cost(model: str, tokens_in: int, tokens_out: int, price_book: dict | None = None) -> float:
@@ -95,7 +101,7 @@ def complete(role: str, system: str, messages: list[dict], schema: type[BaseMode
     """`fixture` (an object or a zero-argument callable) is what DRY_RUN returns instead of calling a model,
     so the caller's real validation and persistence code still runs. Without one, a minimal valid object is synthesised."""
     model = model_for_role(role)
-    if dry_run():
+    if dry_run() and role not in live_llm_roles():
         if fixture is not None:
             value = fixture() if callable(fixture) else fixture
             if schema is not None and not isinstance(value, schema):

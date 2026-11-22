@@ -41,6 +41,9 @@ def create_production(
     aesthetic_note: str = Form(""),
     char_roles: list[str] = Form(default=[]),
     char_files: list[UploadFile] = File(default=[]),
+    leads: str = Form(""),
+    male_photo: UploadFile | None = File(None),
+    female_photo: UploadFile | None = File(None),
     aesthetic_files: list[UploadFile] = File(default=[]),
     brand_name: str = Form(""),
     product: str = Form(""),
@@ -61,10 +64,16 @@ def create_production(
     user: dict = Depends(get_current_user),
 ):
     chars = [f for f in char_files if f.filename]
+    char_refs = [(char_roles[i] if i < len(char_roles) else "", f.file.read()) for i, f in enumerate(chars)]
+    two_leads = leads == "2"       # the page's two photo boxes; the older char_files + char_roles way still works through the API
+    if two_leads:
+        for role, upload in (("male lead", male_photo), ("female lead", female_photo)):
+            if upload is not None and upload.filename:
+                char_refs.append((role, upload.file.read()))
     form = intake.IntakeForm(
         category=category, genre_id=genre_id or None, custom_genre=custom_genre, story_text=story_text, keywords=intake.parse_keywords(keywords),
         language=language, aesthetic_note=aesthetic_note,
-        char_refs=[(char_roles[i] if i < len(char_roles) else "", f.file.read()) for i, f in enumerate(chars)],
+        char_refs=char_refs, two_leads=two_leads,
         aesthetic_refs=[data for _, data in _read(aesthetic_files)],
         brand_name=brand_name, product=product, placement_types=placement_types, frequency_note=frequency_note,
         exclusions=intake.parse_keywords(exclusions), spoken_wording=spoken_wording, brand_color=brand_color, product_description=product_description,
@@ -77,7 +86,7 @@ def create_production(
     problems = intake.validate(form)
     if problems:
         if "application/json" in request.headers.get("accept", ""):
-            return JSONResponse({"errors": problems}, status_code=400)
+            return JSONResponse({"errors": [str(p) for p in problems], "fields": intake.fields_of(problems)}, status_code=400)
         return templates.TemplateResponse(request, "production_new.html", {
             "user": user, "category": category if category in ("standard", "ad_placement") else "", "genres": library.ready_genres(), "errors": problems,
             "alert_text": intake.NOT_LISTED_ALERT, "placement_types": intake.PLACEMENT_TYPES, "asset_kinds": intake.BRAND_ASSET_KINDS,
@@ -95,7 +104,7 @@ def production_page(request: Request, series_id: uuid.UUID, user: dict = Depends
         raise HTTPException(404, "Production not found.")
     can_decide = user["role"] == "admin" or s["owner_id"] == user["id"]
     return templates.TemplateResponse(request, "production.html", {
-        "user": user, "s": s, "can_decide": can_decide, "tracker": overview.tracker(s), "episodes": overview.episode_grid(series_id), "spend": overview.spend(series_id),
+        "user": user, "s": s, "can_decide": can_decide, "tracker": overview.tracker(s), "progress": overview.progress(s), "episodes": overview.episode_grid(series_id), "spend": overview.spend(series_id),
         "activity": overview.activity(series_id),
         "gate": int(s["current_stage"][4:]) if s["status"] == "waiting_gate" and s["current_stage"].startswith("gate") else None,
     })

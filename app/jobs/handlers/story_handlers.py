@@ -17,6 +17,7 @@ from app.stages import brand as brand_stage, originality, story, story_fixtures 
 from app.stages.ingest import _cost_rows
 from app.vendors import llm
 
+BIBLE_ATTEMPTS = 2    # model calls per bible job; each failed check is told to the model once before the job fails
 CHUNK_ATTEMPTS = 3   # tries per beat-sheet chunk before the whole job fails
 KINDS = ["llm_bible", "llm_beats", "llm_placement_plan", "llm_script", "llm_continuity", "llm_wardrobe", "llm_originality"]
 
@@ -53,11 +54,20 @@ def llm_bible(job: dict) -> dict:
          + "\n" + json.dumps({k: ctx["brand"][k] for k in ("brand_name", "placement_types", "frequency_note", "exclusions", "forbidden_claims")}, ensure_ascii=False)) if ctx["brand"] else "",
         "Pattern cards (structure only, never names or plot):\n" + "\n".join(f"- [{c['kind']}] {c['title']}: {c['body']}" for c in cards) if cards else "No reference pattern cards are available.",
     ])
-    bible, usage = llm.complete("story", story.build_system(story.BIBLE_INSTRUCTIONS, ctx, with_bible=False), _user(material, job), schema=StoryBible,
-                                fixture=lambda: fx.make_bible(ctx))
-    _fail_if(story.validate_bible(bible, ctx["roles"], story.blocklist(sid)))
+    system = story.build_system(story.BIBLE_INSTRUCTIONS, ctx, with_bible=False)
+    messages = _user(material + ("\n" + story.episode_count_note()).rstrip(), job)
+    usages = [embed_usage]
+    problems: list[str] = []
+    for attempt in range(BIBLE_ATTEMPTS):          # a failed check costs one more call here, not a whole new job
+        bible, usage = llm.complete("story", system, messages, schema=StoryBible, fixture=lambda: fx.make_bible(ctx))
+        usages.append(usage)
+        problems = story.validate_bible(bible, ctx["roles"], story.blocklist(sid))
+        if not problems:
+            break
+        messages = [*messages[:-1], {"role": "user", "content": messages[-1]["content"] + "\n\nA draft of this bible was rejected by the checks for these problems. Write the complete bible again and fix every one of them:\n- " + "\n- ".join(problems)}]
+    _fail_if(problems)
     story.persist_bible(sid, bible)
-    return _result([embed_usage, usage], episodes=bible.episode_count, characters=len(bible.characters))
+    return _result(usages, episodes=bible.episode_count, characters=len(bible.characters))
 
 
 # ---------------------------------------------------------------- beats

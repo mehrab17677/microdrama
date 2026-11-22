@@ -49,7 +49,11 @@ def login_page(request: Request):
 @router.post("/auth/login")
 def login(request: Request, email: str = Form(""), password: str = Form("")):
     key = auth.normalize_email(email)
-    recent = db.fetch_one("select count(*) n from audit_log where action = 'auth.login_failed' and detail->>'email' = %s and created_at > now() - interval '15 minutes'", (key,))["n"]
+    # Failed attempts in the last 15 minutes, ignoring any from before the latest password reset for this address.
+    recent = db.fetch_one(
+        "select count(*) n from audit_log where action = 'auth.login_failed' and detail->>'email' = %s "
+        "and created_at > greatest(now() - interval '15 minutes', coalesce((select max(created_at) from audit_log "
+        "where action = 'auth.password_reset' and detail->>'email' = %s), '-infinity'))", (key, key))["n"]
     if recent >= MAX_FAILED_LOGINS:   # the same answer whether or not the account exists
         return templates.TemplateResponse(request, "login.html", {"errors": ["Too many failed attempts. Try again in 15 minutes."], "notice": None, "user": None}, status_code=429)
     row = db.fetch_one("select id, password_hash, status from users where email = %s", (key,))
