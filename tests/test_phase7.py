@@ -35,9 +35,9 @@ def look_ready(sid):
 def spy_images(monkeypatch):
     calls, real = [], images.generate_image
 
-    def spy(prompt, references=None, quality=None):
-        calls.append(SimpleNamespace(prompt=prompt, references=references))
-        return real(prompt, references, quality)
+    def spy(prompt, references=None, quality=None, **kw):
+        calls.append(SimpleNamespace(prompt=prompt, references=references, **kw))
+        return real(prompt, references, quality, **kw)
 
     monkeypatch.setattr(images, "generate_image", spy)
     return calls

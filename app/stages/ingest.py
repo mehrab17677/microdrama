@@ -183,7 +183,7 @@ def _cost_rows(usages: list[dict]) -> list[dict]:
             rows.append({"vendor": vendor, "model": model, "units": u["tokens_in"], "unit_name": "tokens_in", "cost_usd": llm.llm_cost(u["model"], u["tokens_in"], 0)})
             rows.append({"vendor": vendor, "model": model, "units": u["tokens_out"], "unit_name": "tokens_out", "cost_usd": llm.llm_cost(u["model"], 0, u["tokens_out"])})
         else:  # embeddings
-            rows.append({"vendor": "openai", "model": u["model"], "units": u.get("tokens", 0), "unit_name": "tokens_in", "cost_usd": u["cost_usd"]})
+            rows.append({"vendor": u.get("vendor", "openai"), "model": u["model"], "units": u.get("tokens", 0), "unit_name": "tokens_in", "cost_usd": u["cost_usd"]})
     return rows
 
 

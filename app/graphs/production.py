@@ -207,9 +207,10 @@ def validate_beats(state):
         if common.latest_note(sid, "beats_errors"):
             common.add_note(sid, "beats_errors", "")
         return {}
+    since = common.retry_since(sid, "validate_beats")     # a retry by a person gives the check a fresh allowance of redos
     runs = db.fetch_one(
-        "select count(*) n from jobs where series_id = %s and kind = 'llm_beats' and status = 'succeeded' and (request->>'rev')::int = %s",
-        (sid, common.gate_revs(sid, 2)),
+        "select count(*) n from jobs where series_id = %s and kind = 'llm_beats' and status = 'succeeded' and (request->>'rev')::int = %s and created_at > coalesce(%s, '-infinity'::timestamptz)",
+        (sid, common.gate_revs(sid, 2), since),
     )["n"]
     if runs >= 3:
         common.fail_series(sid, "validate_beats", "the beat sheet kept failing validation: " + "; ".join(errors[:5]))
@@ -342,13 +343,43 @@ def route_gate3(state):
     return "lock_look" if p["decision"] == "approve" else "reject_look"
 
 
+PACK_KINDS_DEPENDING_ON_MASTER = ("turnaround", "expression", "wardrobe", "pose", "lineup")
+
+
 def reject_look(state):
-    """Delete the listed assets so enq_packs makes them again; the notes and rev change the request."""
+    """The Look gate sent pictures back. For each one: remember the reviewer's note, the model chosen (Nano Banana Pro, or the default) and the rejected
+    picture itself in a `look_redo` note (the redo's job request carries them, so the model sees the note and edits the old picture), then delete it so
+    its step makes it again. A rejected master also removes that character's sheets and the line-up, because they were drawn from it."""
     sid, _, _ = _ids(state)
-    ids = [i.strip() for i in ((gate_payload(state, 3) or {}).get("target") or "").split(",") if i.strip()]
-    if ids:
-        db.execute("delete from character_assets where series_id = %s and id::text = any(%s)", (sid, ids))
+    p = gate_payload(state, 3) or {}
+    notes, model = (p.get("notes") or "").strip(), (p.get("image_model") or "").strip()
+    with db.transaction() as conn:
+        for raw in [i.strip() for i in (p.get("target") or "").split(",") if i.strip()]:
+            if raw.startswith("set:"):
+                plate = conn.execute("select id, plate_r2_key from sets where series_id = %s and id::text = %s", (sid, raw[4:])).fetchone()
+                if plate:
+                    audit.log(conn, None, "note:look_redo", sid, {"text": notes, "identity": f"plate:{plate['id']}", "model": model, "prev": plate["plate_r2_key"]})
+                    conn.execute("update sets set plate_r2_key = null where id = %s", (plate["id"],))
+                continue
+            a = conn.execute("select * from character_assets where series_id = %s and id::text = %s", (sid, raw)).fetchone()
+            if a is None:
+                continue
+            if a["kind"] == "voice_sample":    # a swapped voice: the voice step designs candidates again; there is no picture to correct
+                conn.execute("delete from character_assets where id = %s", (a["id"],))
+                continue
+            audit.log(conn, None, "note:look_redo", sid, {"text": notes, "identity": work.look_identity(a["kind"], a["character_id"], a["tags"]), "model": model, "prev": a["r2_key_clean"]})
+            conn.execute("delete from character_assets where id = %s", (a["id"],))
+            if a["kind"] == "master":
+                conn.execute("delete from character_assets where series_id = %s and (character_id = %s or kind = 'lineup') and kind = any(%s)", (sid, a["character_id"], list(PACK_KINDS_DEPENDING_ON_MASTER)))
     return {}
+
+
+def route_reject_look(state):
+    """A rejected master is made again first (then likeness, then the sheets); otherwise straight to the sheets and plates."""
+    sid = state["series_id"]
+    if _dead(sid):
+        return END
+    return "enq_masters" if work.masters_items(sid, "", 0) else "enq_packs"
 
 
 def lock_look(state):
@@ -392,7 +423,7 @@ def validate_shots(state):
         errors = validation.validate_shot_rows(e["id"])
         if not errors:
             continue
-        if common.count_notes(sid, f"shots_redo:{e['number']}") >= 2:
+        if common.count_notes_since(sid, f"shots_redo:{e['number']}", common.retry_since(sid, "validate_shots", "fit_durations")) >= 2:
             common.fail_series(sid, "validate_shots", f"episode {e['number']} shot list kept failing: " + "; ".join(errors[:4]))
             return {}
         with db.transaction() as conn:
@@ -426,7 +457,7 @@ def fit_durations(state):
         fitted = durations.fit_episode(
             [{"idx": s["idx"], "tier": s["tier"], "line_durations": [dur[i] for i in s["line_ids"]], "est_seconds": s["spec"].get("est_seconds"), "fixed": bool(s["spec"].get("brand"))} for s in shots], timing)
         if fitted["too_long"]:
-            if common.count_notes(sid, f"shots_redo:{e['number']}") >= 2:
+            if common.count_notes_since(sid, f"shots_redo:{e['number']}", common.retry_since(sid, "validate_shots", "fit_durations")) >= 2:
                 common.fail_series(sid, "fit_durations", f"episode {e['number']} still has a shot over 10 s after redoing the shot list")
                 return {}
             msg = "; ".join(f"shot {i} needs {fitted['planned'][i]:.1f} s; split it" for i in fitted["too_long"])
@@ -629,13 +660,16 @@ def apply_feedback(state):
                 continue
             if ep and ep["batch"] != batch:
                 conn.execute("update episodes set batch = %s where id = %s", (batch, ep["id"]))
-            fb = Jsonb({"feedback_id": str(f["id"])})
+            from app.intake import clean_text
+
+            fb_base = {"feedback_id": str(f["id"]), "feedback_note": clean_text(f["note"], 500)}   # the note itself reaches the keyframe prompt and the shot-request writer
             status_for_episode = "rendered"
             for s in conn.execute("select * from shots where id = any(%s)", (f["shot_ids"],)).fetchall():
                 if cat in ("picture", "brand", "lipsync", "voice"):
                     from app import placement
 
                     placement.reset_for_shot(conn, s["id"])   # the shot is rendered again: a placement approval no longer holds
+                fb = Jsonb({**fb_base, **({"prev_keyframe": s["keyframe_r2_key"]} if cat in ("picture", "brand") and s["keyframe_r2_key"] else {})})   # the rejected frame is shown to the model as the picture to correct
                 if cat in ("picture", "brand"):
                     new = "keyframe_ready" if s["tier"] == "INSERT" else "planned"   # an insert has no keyframe: it is rebuilt from the plate
                     conn.execute("update shots set status = %s, attempts = 0, sync_attempts = 0, fallback_used = false, keyframe_r2_key = null, raw_clip_r2_key = null,"
@@ -714,7 +748,7 @@ def build_production_graph() -> StateGraph:
     g.add_edge("prepare_gate3", "gate3")
     g.add_conditional_edges("gate3", route_gate3)
     g.add_node("reject_look", reject_look)
-    g.add_edge("reject_look", "enq_packs")
+    g.add_conditional_edges("reject_look", route_reject_look)
     g.add_node("lock_look", lock_look)
     g.add_edge("lock_look", "start_batch")
 

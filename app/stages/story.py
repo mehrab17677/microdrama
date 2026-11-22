@@ -35,7 +35,7 @@ Rules:
   place, invented term or plot from any reference. The story must be original.
 - Cast from the brief. Each intake role label becomes one fixed character slot: set `slot_role` to that exact label on exactly
   one character. Add supporting characters with `slot_role` null. Give characters codes CH01, CH02, ... Names suit the dialogue
-  language and the setting. `visual_description` is 40 to 80 words of physical appearance and styling only (no personality,
+  language and the setting. `visual_description` is 35 to 80 words of physical appearance and styling only (no personality,
   no names, no brand names).
 - 4 to 8 recurring sets, codes SET01, SET02, ... Each lists its times_of_day from: day, night, dusk.
 - `episode_count`: 45 by default, up to 50 only when the story needs the room.
@@ -230,8 +230,8 @@ def validate_bible(bible: StoryBible, roles: list[str], terms: list[str]) -> lis
         problems.append("at least one character must be a lead")
     for c in bible.characters:
         n = word_count(c.visual_description)
-        if not 40 <= n <= 80:
-            problems.append(f"{c.code} visual_description is {n} words; it must be 40 to 80")
+        if not 35 <= n <= 80:
+            problems.append(f"{c.code} visual_description is {n} words; it must be 35 to 80")
     hits = blocklist_hits(bible.model_dump(), terms)
     if hits:
         problems.append("the bible uses names or terms from reference material: " + ", ".join(hits[:8]))

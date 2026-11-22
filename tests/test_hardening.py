@@ -131,3 +131,27 @@ def test_a_password_reset_sets_a_new_password_and_lifts_the_lockout(env):
     reset_password.reset_password("Owner@X.io", "a-good-new-password")
     assert c.post("/auth/login", data={"email": "owner@x.io", "password": PW}).status_code == 401              # the old password is gone
     assert c.post("/auth/login", data={"email": "owner@x.io", "password": "a-good-new-password"}).status_code == 303
+
+
+def test_face_models_survive_concurrent_workers():
+    """Several worker threads share one detector and one recogniser: without a lock their calls crashed with OpenCV 'forwardGraph' assertions."""
+    import threading
+    from pathlib import Path
+
+    from app.qa import face
+
+    data = (Path(__file__).parent / "fixtures" / "image_1080x1920.png").read_bytes()
+    errors = []
+
+    def work():
+        try:
+            for _ in range(10):
+                face.face_vector(data)
+                face.count_faces(data)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(repr(exc)[:120])
+
+    threads = [threading.Thread(target=work) for _ in range(8)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert errors == []

@@ -381,7 +381,14 @@ def request_material(sid, shot: dict, model_key: str, rules: list[dict]) -> str:
         f"Camera setup: {camera_text(shot, model_key)}",
         ("Line(s) spoken:\n" + "\n".join(lines)) if lines else "",
         ("Rules learned from earlier failures:\n" + "\n".join(f"- {r['rule_text']}" for r in rules)) if rules else "",
+        feedback_line(spec),
     ] if x)
+
+
+def feedback_line(spec: dict) -> str:
+    """A reviewer's note on this shot from the finished episode (Gate 4 or 5 feedback): the writer applies it when it rewrites the shot's request."""
+    note = (spec or {}).get("feedback_note")
+    return f"Reviewer feedback on the previous version of this shot (apply it): {note}" if note else ""
 
 
 def fixture_request(shot: dict, model_key: str) -> "ShotRequest":

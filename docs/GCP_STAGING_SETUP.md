@@ -2,7 +2,7 @@
 
 **What you get:** the whole app running on a small Google Cloud server at a web address like `https://34-12-56-78.sslip.io`, with HTTPS, that you can share with stakeholders.
 **What it costs:** it uses your $300 free credit (about $50 a month for the server). Nothing is charged to your card unless you upgrade the account.
-**What it shows:** the app runs in **dry-run mode**. Every screen and every approval works exactly like the real thing, but the story text, pictures, voices and videos are built-in samples, and nothing is sent to Anthropic, OpenAI, fal or ElevenLabs. So stakeholders can click through the workflow; they will not see real AI output until you get credit and follow `docs/PILOT_RUNBOOK.md`.
+**What it shows:** the app runs in **dry-run mode**. Every screen and every approval works exactly like the real thing, but the story text, pictures, voices and videos are built-in samples, and nothing is sent to Anthropic, fal or ElevenLabs. So stakeholders can click through the workflow; they will not see real AI output until you get credit and follow `docs/PILOT_RUNBOOK.md`.
 
 You need: a Google account, a credit or debit card (for sign-up verification only), a GitHub account that can read the repository, and about 40 minutes. You do **not** need to install anything on your computer: everything runs in the browser.
 

@@ -10,16 +10,21 @@
  <div class="meta"><span>{{ stage_label(s.current_stage) }}{% if progress.running %} · working…{% elif s.status == 'waiting_gate' %} · waiting for your decision{% elif s.status == 'held_budget' %} · paused for budget{% elif s.status == 'failed' %} · stopped{% elif s.status == 'done' %} · finished{% endif %}</span><strong>{{ '%.0f'|format(progress.percent) }}%</strong></div>
 </div>
 
-{% if progress.failure %}<div class="err"><strong>This production stopped.</strong> The last failed step was <code>{{ progress.failure.kind }}</code>.
-<details open><summary>Why</summary><p style="margin:.3rem 0">{{ progress.failure.error or 'No reason was recorded.' }}</p></details>
-<p style="margin:.3rem 0">Your inputs are not lost: start a new production and re-enter them. If the reason is about names from reference material or word counts, a new run usually passes, because the writer is now told the rules and is asked to fix a rejected draft once.</p></div>{% endif %}
+{% if progress.failure %}{% set f = progress.failure %}<section class="err" id="failure">
+<strong>This production stopped{% if f.step_label %} at “{{ f.step_label }}”{% endif %}.</strong> The step used up its automatic attempts.
+<p style="margin:.4rem 0">{{ f.message or f.error or 'No reason was recorded.' }}</p>
+{% if f.jobs %}<details open><summary>Failed attempts ({{ f.jobs|length }})</summary>
+<ul style="margin:.3rem 0;padding-left:1.2rem;font-size:.9rem">{% for j in f.jobs %}<li><code>{{ j.kind }}</code> · attempt {{ j.attempt }} · {{ j.at.strftime('%d %b %H:%M:%S') }}<br><span style="color:#8a1c1c">{{ j.error or 'no reason recorded' }}</span></li>{% endfor %}</ul></details>{% endif %}
+{% if can_decide %}<form method="post" action="/productions/{{ s.id }}/retry" style="margin-top:.5rem"><button>Retry {{ (f.step_label or 'this step')|lower }}</button>
+<small class="muted"> Finished work is kept; only what is missing is run again, with a fresh set of attempts. The written reasons above are given to the model on the next try where it applies.</small></form>
+{% else %}<p><small>The owner or an admin can retry this step.</small></p>{% endif %}</section>{% endif %}
 
 <h2>Stages</h2>
 <ol id="tracker" class="stages">{% for st in progress.stages %}
 <li class="stg stg-{{ 'pending' if st.state == 'not started' else st.state }}" data-state="{{ st.state }}">
  <span class="ring" aria-hidden="true"><svg viewBox="0 0 36 36"><circle class="track" cx="18" cy="18" r="15"/><circle class="arc" cx="18" cy="18" r="15"/></svg>
  {% if st.state == 'done' %}<i class="ic">&#10003;</i>{% elif st.state == 'waiting' %}<i class="ic">&#10074;&#10074;</i>{% elif st.state in ('failed', 'discarded') %}<i class="ic">&#10005;</i>{% elif st.state == 'not started' %}<i class="ic" style="color:#aaa;font-weight:500">{{ loop.index }}</i>{% endif %}</span>
- <span class="lb">{{ st.label }}</span>
+ <span class="lb">{{ st.label }}</span>{% if st.state == 'failed' and progress.failure and can_decide %}<form method="post" action="/productions/{{ s.id }}/retry" style="margin:0"><button class="quiet" style="padding:.15rem .5rem;font-size:.75rem">Retry</button></form>{% endif %}
  <small>{% if st.state == 'not started' %}not started{% elif st.total %}{{ st.done }}/{{ st.total }} jobs{% if st.failed %} · {{ st.failed }} failed{% endif %}{% elif st.state == 'running' %}starting…{% elif st.state == 'waiting' %}your turn{% else %}{{ st.state }}{% endif %}</small>
  <span class="sr-only" style="position:absolute;left:-9999px">{{ st.state }}</span>
 </li>{% endfor %}</ol>

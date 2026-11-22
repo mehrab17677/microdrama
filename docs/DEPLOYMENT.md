@@ -9,7 +9,7 @@
 | A domain name pointing at the host | Caddy gets the certificate. The session cookie is `Secure`, so HTTPS is required. |
 | Postgres 16 with `pgvector` | The compose file runs `pgvector/pgvector:pg16`. Or Supabase on a **paid plan** using the **session pooler, port 5432** (never the transaction pooler 6543). The free plan pauses after 7 idle days. |
 | A Cloudflare R2 bucket | Keys with read, write, delete on that bucket. |
-| Vendor accounts with credit | Anthropic, OpenAI (images and embeddings), fal (video), ElevenLabs **paid plan** (voice design and library voices are refused on the free plan). |
+| Vendor accounts with credit | Anthropic (language models), **fal** (images, embeddings and video: see `docs/IMAGE_MODELS.md`), ElevenLabs **paid plan** (voice design and library voices are refused on the free plan). OpenAI is optional. |
 | Outbound network | `api.anthropic.com`, `api.openai.com`, `api.elevenlabs.io`, `queue.fal.run`, `rest.fal.ai`, `fal.media`, `v3.fal.media`, `v3b.fal.media`, `<account>.r2.cloudflarestorage.com`, the Postgres host. |
 | Inbound | Only 80 and 443 (Caddy). `POST /webhooks/fal` must be reachable from fal (set `PUBLIC_BASE_URL`). |
 
@@ -42,6 +42,6 @@ the proxy adds HSTS, no-sniff and no-frame headers. Not built: CSRF tokens (reli
 ## What has and has not been verified (19 Nov 2026)
 **Verified by automated tests (348, all on fixtures):** every phase's acceptance tests; three productions at once; a killed worker; the full flow of ordinary and ad dramas; retention; the login throttle.
 **Verified once against real services:** Anthropic (source analysis, the whole story stage in Bangla, vision in the look stage), R2 (put, presign, get, delete), Postgres, ffmpeg, Bengali caption rendering, face models, fal key and webhook signature handling (offline).
-**Never run for real, so unproven:** OpenAI images and embeddings; every fal video model (Seedance 1.5 and 2.0, Kling V3, Avatar, LipSync, LatentSync); ElevenLabs speech, voice design, music and sound effects (and Bengali on `eleven_v3`, which the model list does say is supported);
+**Never run for real, so unproven:** fal images (GPT Image 2.5 Flare and Nano Banana Pro) and fal embeddings; every fal video model (Seedance 1.5 and 2.0, Kling V3, Avatar, LipSync, LatentSync); ElevenLabs speech, voice design, music and sound effects (and Bengali on `eleven_v3`, which the model list does say is supported);
 the real webhook delivery; the face-match thresholds on real video; Kling output size and frame rate; whether fal accepts real brand logos and how faithful Seedance 2.0 keeps a real label. The Docker image has not been built here (no Docker daemon in the build environment); the same dependency file installs and the app boots in a clean virtualenv.
 **Not built:** batch mode (Phase 13, a cost saving only), scripted sound effects (shots list `sounds` but none are generated), compositing real label pixels onto a generated product, a lip-sync scorer (people judge sync at the gates), email alerts.

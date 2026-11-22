@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from psycopg.types.json import Jsonb
 
 from app import db
-from app.config import dry_run
+from app.config import dry_run, get_config
 from app.graphs import common
 from app.jobs.errors import PermanentError
 from app.media import review
@@ -37,8 +37,9 @@ def _usage_row(u: dict) -> dict | None:
     if not u.get("cost_usd"):
         return None                                     # free (local backend, or no price published)
     model = str(u["model"])
-    vendor = "local" if model.startswith("local:") else ("openai" if "image" in model else "elevenlabs")
-    unit = "image" if "image" in model else ("second" if "sound" in model else "char")
+    is_image = "model_key" in u or "image" in model
+    vendor = u.get("vendor") or ("local" if model.startswith("local:") else ("openai" if is_image else "elevenlabs"))
+    unit = "image" if is_image else ("second" if "sound" in model else "char")
     return {"vendor": vendor, "model": model, "units": 1, "unit_name": unit, "cost_usd": u["cost_usd"]}
 
 
@@ -52,6 +53,26 @@ def _result(usages: list[dict], **extra) -> dict:
 def _fail_if(problems: list[str]) -> None:
     if problems:
         raise PermanentError(f"{len(problems)} problem(s): " + "; ".join(problems[:10]))
+
+
+def _redo_note(req: dict) -> str:
+    """A reviewer's note from the Look gate, for the picture it rejected (the note is stored with the job request, so it reaches the model)."""
+    n = (req.get("notes") or "").strip()
+    return ("Reviewer correction to apply to this picture (change only what it asks and keep everything else, including who the person is): " + n) if n else ""
+
+
+def _prev_image(req: dict) -> bytes | None:
+    """The rejected picture, to edit instead of starting over. Gone from storage is not an error: the note alone still applies."""
+    key = req.get("prev")
+    if not key:
+        return None
+    try:
+        return look.fetch_bytes(key)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+PREV_SENTENCE = "The last reference image is the previous version of this picture, which the reviewer rejected: keep what works in it and apply the correction."
 
 
 def _previous(job: dict) -> str:
@@ -156,7 +177,13 @@ def image_master(job: dict) -> dict:
         refs.append(look.fetch_bytes(ref["r2_key"]))
     refs += look.aesthetic_images(sid)
     prompt = look.master_prompt(char, look.trait_sheet_for(sid, char["id"]), brief["aesthetic_note"])
-    png, usage = images.generate_image(prompt, references=refs or None)
+    note, prev = _redo_note(req), _prev_image(req)
+    if note:
+        prompt += "\n" + note
+    if prev is not None:
+        refs.append(prev)
+        prompt += "\n" + PREV_SENTENCE
+    png, usage = images.generate_image(prompt, references=refs or None, quality=get_config("master_image_quality"), purpose="master", model=req.get("model"))
     vector = face.face_vector(png)
     if vector is None:
         if _real_faces():
@@ -183,7 +210,14 @@ def image_pack(job: dict) -> dict:
             row = db.fetch_one("select description from wardrobe_items where character_id = %s and code = %s", (char["id"], req["tags"].get("outfit")))
             outfit = row and row["description"]
         prompt = look.pack_prompt(char, req["kind"], req["tags"], outfit)
-        png, usage = images.generate_image(prompt, references=[look.fetch_bytes(master["r2_key_clean"])])
+        refs = [look.fetch_bytes(master["r2_key_clean"])]
+        note, prev = _redo_note(req), _prev_image(req)
+        if note:
+            prompt += " " + note
+        if prev is not None:
+            refs.append(prev)
+            prompt += " " + PREV_SENTENCE
+        png, usage = images.generate_image(prompt, references=refs, purpose="pack", model=req.get("model"))
         vector = face.face_vector(png)
         if vector is None and not _real_faces():
             vector = [float(x) for x in master["fv"].strip("[]").split(",")] if master["fv"] else None   # dry run: same face as the master
@@ -194,7 +228,14 @@ def image_pack(job: dict) -> dict:
                                " where a.series_id = %s and a.kind = 'master' order by c.code", (sid,))
         prompt = ("Cast line-up: all of these characters standing side by side at true relative height, full body, plain background. "
                   + " ".join(f"{m['code']}: {m['visual_description'].strip()}" for m in masters))
-        png, usage = images.generate_image(prompt, references=[look.fetch_bytes(m["r2_key_clean"]) for m in masters[:16]] or None)
+        refs = [look.fetch_bytes(m["r2_key_clean"]) for m in masters[:13]]
+        note, prev = _redo_note(req), _prev_image(req)
+        if note:
+            prompt += " " + note
+        if prev is not None:
+            refs.append(prev)
+            prompt += " " + PREV_SENTENCE
+        png, usage = images.generate_image(prompt, references=refs or None, purpose="pack", model=req.get("model"))
         vector, title, folder, subtitle = None, "Cast line-up", "lineup", ""
     review_key, clean_key = _save_pair(sid, folder, asset_id, png, title, subtitle)
     db.execute(
@@ -207,7 +248,15 @@ def image_set_plate(job: dict) -> dict:
     sid = job["series_id"]
     s = db.fetch_one("select * from sets where id = %s", (job["request"]["set_id"],))
     brief = common.latest_brief(sid)
-    png, usage = images.generate_image(look.plate_prompt(s, brief["aesthetic_note"]), references=look.aesthetic_images(sid) or None)
+    req = job["request"]
+    prompt, refs = look.plate_prompt(s, brief["aesthetic_note"]), look.aesthetic_images(sid)
+    note, prev = _redo_note(req), _prev_image(req)
+    if note:
+        prompt += " " + note
+    if prev is not None:
+        refs.append(prev)
+        prompt += " " + PREV_SENTENCE
+    png, usage = images.generate_image(prompt, references=refs or None, purpose="plate", model=req.get("model"))
     key = f"series/{sid}/sets/{s['code']}_{s['time_of_day']}.png"
     storage.put_bytes(key, png, "image/png")
     db.execute("update sets set plate_r2_key = %s where id = %s", (key, s["id"]))

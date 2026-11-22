@@ -8,8 +8,8 @@ and these backends are never used. Nothing here changes what production runs.
 
 | Capability | Plan (production) | Test stand-in | Switch | Module |
 |---|---|---|---|---|
-| Images (portraits, packs, plates, keyframes) | OpenAI `gpt-image-2.5-flare` | SD-Turbo (Stable Diffusion, 1 step, CPU) | `IMAGE_BACKEND=local_sd` | `app/vendors/local_images.py` |
-| Embeddings (retrieval, originality, similarity) | OpenAI `text-embedding-3-small` | all-MiniLM-L6-v2, zero-padded to 1536 | `EMBEDDING_BACKEND=local` | `app/vendors/local_embeddings.py` |
+| Images (portraits, packs, plates, keyframes) | fal: GPT Image 2.5 Flare / Nano Banana Pro (see `docs/IMAGE_MODELS.md`) | SD-Turbo (Stable Diffusion, 1 step, CPU) | `IMAGE_BACKEND=local_sd` | `app/vendors/local_images.py` |
+| Embeddings (retrieval, originality, similarity) | fal route to `text-embedding-3-small` | all-MiniLM-L6-v2, zero-padded to 1536 | `EMBEDDING_BACKEND=local` | `app/vendors/local_embeddings.py` |
 | Speech, voice design, ambience, music | ElevenLabs (`eleven_v3`, voice design, sound effects, music) | MMS-TTS plus pitch/tempo variation; procedural ambience and music | `VOICE_BACKEND=local` | `app/vendors/local_voice.py` |
 
 Not stood in for (still needs the real service): video and lip-sync (fal), speech-to-text, Bangla speech.

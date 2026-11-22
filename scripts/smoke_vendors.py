@@ -1,6 +1,6 @@
 """Real-money smoke test for the vendor clients (guide section 13, phase 3). Run by a person.
 
-    DRY_RUN=0 python scripts/smoke_vendors.py --out DIR --steps openai_text,embeddings,image,seedance --yes-spend
+    DRY_RUN=0 python scripts/smoke_vendors.py --out DIR --steps openai_text,embeddings,image,nanobanana,seedance --yes-spend
 
 Steps (estimated cost): openai_text (~$0), embeddings (~$0), image (2 images), seedance (4 s silent
 1080p, ~$0.23), avatar (3 s audio, ~$0.35), lipsync (4 s clip, ~$0.07), latentsync (4 s clip, $0.20),
@@ -81,6 +81,18 @@ def step_image(out: Path) -> None:
         "plain": {"size": Image.open(out / "image_plain.png").size, "usage": usage},
         "with_reference": {"size": Image.open(out / "image_ref.png").size, "usage": usage2},
     }
+
+
+def step_nanobanana(out: Path) -> None:
+    """One Nano Banana Pro text-to-image and one edit with a reference (about $0.30): size returned, whether a real face passes the check, price."""
+    from PIL import Image
+
+    png, usage = images.generate_image("Front-facing head-and-shoulders portrait of an adult man, neutral expression, even lighting, plain background", model="nano_banana_pro")
+    (out / "nano_plain.png").write_bytes(png)
+    png2, usage2 = images.generate_image("The same man in a dark green jacket, full-body, standing, plain background", references=[png], model="nano_banana_pro")
+    (out / "nano_ref.png").write_bytes(png2)
+    RESULTS["nanobanana"] = {"plain": {"size": Image.open(out / "nano_plain.png").size, "usage": usage}, "with_reference": {"size": Image.open(out / "nano_ref.png").size, "usage": usage2},
+                             "note": "usage.size is what fal returned before scaling to 1080x1920; record it in docs/VENDOR_NOTES.md"}
 
 
 def step_seedance(out: Path) -> None:
@@ -168,7 +180,7 @@ def step_latentsync(out: Path) -> None:
     RESULTS["latentsync"] = {"request_id": rid, "probe": probe(path), "estimated_cost": falmedia.estimate_cost("latentsync", duration=4)}
 
 
-STEPS = {f.__name__[5:]: f for f in (step_openai_text, step_embeddings, step_image, step_seedance, step_avatar, step_lipsync, step_latentsync, step_brandshot, step_speech, step_music)}
+STEPS = {f.__name__[5:]: f for f in (step_openai_text, step_embeddings, step_image, step_nanobanana, step_seedance, step_avatar, step_lipsync, step_latentsync, step_brandshot, step_speech, step_music)}
 
 
 def main() -> int:

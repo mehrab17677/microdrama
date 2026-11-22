@@ -81,8 +81,12 @@ def progress(s: dict, jobs: dict[str, dict] | None = None) -> dict:
         percent = min(99.0, (cur + fraction) / len(STAGES) * 100)
     failure = None
     if s["status"] == "failed":
+        from app import retry
+
         row = db.fetch_one("select kind, error from jobs where series_id = %s and status = 'failed' order by coalesce(finished_at, created_at) desc limit 1", (s["id"],))
-        failure = {"kind": row["kind"], "error": row["error"]} if row else {"kind": "", "error": ""}
+        info = retry.failure_info(None, s["id"]) or {"step": "", "message": ""}
+        failure = {"kind": row["kind"] if row else "", "error": row["error"] if row else "", "step": info["step"], "step_label": retry.step_label(info["step"]) if info["step"] else "",
+                   "message": info["message"], "jobs": retry.failed_jobs(s["id"])}
     return {"percent": round(percent, 1), "stages": stages, "failure": failure, "running": s["status"] in ("running", "waiting_jobs")}
 
 

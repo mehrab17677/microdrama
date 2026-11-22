@@ -16,7 +16,7 @@ CONFIG_DEFAULTS: dict[str, tuple[object, str]] = {
             "vision_qa_strong": "anthropic:claude-sonnet-5-5",
             "product_sheet": "anthropic:claude-sonnet-5-5",    # reads the real product photos once; its own role so a demo can run it live without making the shot judges live
             "rule_writer": "anthropic:claude-sonnet-5-5",
-            "copy": "openai:gpt-6-luna",
+            "copy": "anthropic:claude-haiku-5-5",     # line tags, emotion groups, feedback sorting, marketing text: no OpenAI account needed
         },
         "Role -> model string (guide 6.1)",
     ),
@@ -72,7 +72,16 @@ CONFIG_DEFAULTS: dict[str, tuple[object, str]] = {
         "Initial values; calibrate on the pilot",
     ),
     "originality_cosine_max": (0.90, "Scene similarity limit"),
-    "image_quality": ("medium", "auto|low|medium|high|xhigh|max"),
+    "image_quality": ("medium", "auto|low|medium|high|xhigh|max (GPT Image models)"),
+    "master_image_quality": ("high", "Quality for master (prime) portraits: they set every later image's identity, and there are only a few"),
+    "image_provider": ("fal", "Where GPT Image requests go: fal or openai (Nano Banana Pro is fal only)"),
+    "embedding_provider": ("fal", "Where embeddings are made: fal (OpenRouter route, text-embedding-3-small) or openai"),
+    "image_models": ({"default": "gpt_image_flare", "brand_keyframe": "nano_banana_pro"},
+                     "Image model per purpose (master, pack, plate, keyframe, brand_keyframe, else default): gpt_image_flare or nano_banana_pro. Ad-placement shot keyframes use Nano Banana Pro"),
+    "nano_banana_resolution": ("2K", "Nano Banana Pro output tier: 1K, 2K or 4K (4K costs double); the result is scaled to 1080x1920"),
+    # fal image prices in USD per image (fal pricing pages, Nov 2026). GPT Image 2.5 Flare edit/text at 1024x1536; 1152x2048 is a little larger and may cost slightly more.
+    "image_prices": ({"gpt_image_flare": {"edit": {"low": 0.0131, "medium": 0.0186, "high": 0.0495}, "text": {"low": 0.0048, "medium": 0.0104, "high": 0.0413}},
+                      "nano_banana_pro": {"1K": 0.15, "2K": 0.15, "4K": 0.30}}, "fal image prices per image; UNVERIFIED against an invoice"),
     # VERIFIED-CHANGE: OpenAI requires both sides to be multiples of 16, so 1080x1920 is invalid.
     # Modes: native_1080x1920 | scale_1152x2048 | crop_1024x1536
     "image_size_mode": ("scale_1152x2048", "Generate 1152x2048 (exact 9:16) and Lanczos-scale to 1080x1920"),

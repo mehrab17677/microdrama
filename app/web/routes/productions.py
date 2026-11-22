@@ -148,6 +148,22 @@ def _brand_pack(series_id) -> dict | None:
                                                     for a in db.fetch_all("select * from brand_assets where series_id = %s order by kind, created_at", (series_id,))]}
 
 
+def _image_choices() -> list[dict]:
+    """The models offered when redoing pictures at the Look gate: the default one first, then Nano Banana Pro."""
+    from app.config import get_config
+    from app.vendors import images
+
+    default = images.model_for("pack")
+    notes = {"gpt_image_flare": "Fast and inexpensive; follows a written correction well.",
+             "nano_banana_pro": "Slower and about seven times the price; the strongest at keeping a face and reading a product label."}
+    keys = [default] + [k for k in images.IMAGE_MODELS if k != default]
+    out = []
+    for i, k in enumerate(keys):
+        price = images.fal_image_cost(k, edit=True, quality=get_config("image_quality"), resolution=get_config("nano_banana_resolution"))
+        out.append({"value": "" if i == 0 else k, "label": images.IMAGE_MODELS[k]["label"] + (" (default)" if i == 0 else ""), "price": price, "note": notes.get(k, "")})
+    return out
+
+
 @router.get("/productions/{series_id}/review/look", response_class=HTMLResponse)
 def review_look(request: Request, series_id: uuid.UUID, user: dict = Depends(get_current_user)):
     """Gate 3 review: each character's pack beside the reference photo, set plates, and a voice sample per speaking character."""
@@ -179,7 +195,7 @@ def review_look(request: Request, series_id: uuid.UUID, user: dict = Depends(get
     can_decide = user["role"] == "admin" or s["owner_id"] == user["id"]
     return templates.TemplateResponse(request, "review_look.html", {
         "user": user, "s": s, "characters": characters, "lineup": lineup and {**lineup, "url": _media(series_id, lineup["r2_key_review"])}, "sets": sets,
-        "brand": _brand_pack(series_id), "skipped_kinds": sorted(images.unsupported_pack_kinds()), "voices_json": json.dumps(voices), "at_gate": s["status"] == "waiting_gate" and s["current_stage"] == "gate3", "can_decide": can_decide,
+        "models": _image_choices(), "brand": _brand_pack(series_id), "skipped_kinds": sorted(images.unsupported_pack_kinds()), "voices_json": json.dumps(voices), "at_gate": s["status"] == "waiting_gate" and s["current_stage"] == "gate3", "can_decide": can_decide,
     })
 
 
@@ -197,6 +213,7 @@ def decide_gate(
     voices: str = Form(""),
     story_text: str = Form(""),
     redo: list[str] = Form(default=[]),
+    image_model: str = Form(""),
 ):
     target = target or ",".join(redo)          # the review page sends one checkbox per asset to redo
     try:
@@ -207,9 +224,22 @@ def decide_gate(
         raise HTTPException(400, "voices must be a JSON object of character code to voice id.") from None
     try:
         with db.transaction() as conn:
-            decisions.decide_gate(conn, ctx["series"]["id"], ctx["user"]["id"], n, decision, notes, target, voice_map, story_text)
+            decisions.decide_gate(conn, ctx["series"]["id"], ctx["user"]["id"], n, decision, notes, target, voice_map, story_text, image_model)
     except decisions.DecisionError as exc:
         _fail(exc)
+    return RedirectResponse(f"/productions/{ctx['series']['id']}", status_code=303)
+
+
+@router.post("/productions/{series_id}/retry")
+def retry_production(ctx: dict = Depends(require_decider)):
+    """Retry a failed production from the step that failed (owner or admin). The runner enters the graph at that step."""
+    from app import retry
+
+    try:
+        with db.transaction() as conn:
+            retry.request_retry(conn, ctx["series"]["id"], ctx["user"]["id"])
+    except retry.RetryError as exc:
+        raise HTTPException(exc.status, exc.detail) from exc
     return RedirectResponse(f"/productions/{ctx['series']['id']}", status_code=303)
 
 

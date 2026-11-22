@@ -26,8 +26,10 @@ In Cloud Shell (the `>_` icon):
 - [ ] **New production → Standard drama**: pick the genre, 3 to 8 keywords, language English, the male lead photo and the female lead photo, look pictures. Start. *(Try leaving a field empty first: each problem appears under its own field and everything else you entered stays. Pictures show a preview with a ✕ to remove them.)*
 - [ ] **Gate 2, Story**: read the bible and beats. Optionally reject once with a note to see a redo, then approve.
 - [ ] **Gate 3, Look**: check character sheets and voices. Approval must be refused while a voice is missing; then approve.
+- [ ] **Look gate redo** (Gate 3): tick a picture (a sheet picture, a master, a set plate), type what to change, choose *Nano Banana Pro* and press *Redo the ticked pictures*. The same page returns with that picture made again. (In dry-run the picture is the sample, but the model choice and your note are recorded: Activity shows the redo.)
 - [ ] **Gate 4, Pilot episodes** (3 episodes): play one, mark a range, send feedback such as `Episode 2 (00:05-00:10) the pacing is slow`; confirm it maps to shots; then approve.
 - [ ] **Live view**: the production page shows the overall progress bar, a ring per stage (a spinning ring while a stage works, a tick when done) and the job counts; the left side panel lists the pages in groups.
+- [ ] **Retry:** if a production stops with a failure, the page lists the failed attempts and their reasons with a **Retry** button (on the failed stage and in the red panel). Press it: the same step runs again.
 - [ ] **Spend bar**: visible on the dashboard and the production page.
 - [ ] **Gate 5, Final cut**: approve. **Delivery** page shows the master and the reports (CSV links work).
 - [ ] **Ad placement drama**: New production → Ad placement. Fill brand, product, description (20+ words), printed text, placement types, add the logo and the product photos (each preview has a kind and view menu: logo; product with view front, back, ...). Run the gates.

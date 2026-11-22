@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 
 from app import db
 from app.config import get_config
+from app.graphs import common
 from app.jobs import ledger
 
 
@@ -39,7 +40,7 @@ def enqueue_step(series_id, step: str, batch: str, rnd: int, items: list[WorkIte
     """Returns ('waiting' | 'idle', exhausted_items). 'waiting' means the series is now
     waiting_jobs on a new group; 'idle' means nothing is in flight. Items that used up max_attempts
     are returned in `exhausted` and not enqueued."""
-    max_attempts = int(get_config("max_attempts"))
+    max_attempts = int(get_config("max_attempts")) * (1 + common.retry_epoch(series_id, step))   # each retry after a final failure gives the step a fresh set of attempts
     exhausted: list[WorkItem] = []
     live: list[WorkItem] = []
     with db.transaction() as conn:

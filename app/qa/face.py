@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import threading
 from functools import lru_cache
 from pathlib import Path
 
@@ -18,6 +19,11 @@ DETECTOR_FILE = MODELS / "face_detection_yunet_2026may.onnx"
 RECOGNIZER_FILE = MODELS / "face_recognition_sface_2021dec.onnx"
 SCORE_THRESHOLD = 0.7
 MAX_DETECT_SIDE = 1280  # large photos are shrunk before detection
+
+
+# The OpenCV models are single shared objects and are not safe to call from several threads (the detector's input size is set per call, and a
+# network's buffers are reused): concurrent workers made calls fail with "forwardGraph" assertions. Every use goes through this lock.
+_LOCK = threading.Lock()
 
 
 @lru_cache(maxsize=1)
@@ -51,8 +57,9 @@ def detect_faces(image: bytes | np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         img = cv2.resize(img, (round(w * scale), round(h * scale)), interpolation=cv2.INTER_AREA)
         h, w = img.shape[:2]
     detector, _ = _models()
-    detector.setInputSize((w, h))
-    _, faces = detector.detect(img)
+    with _LOCK:
+        detector.setInputSize((w, h))
+        _, faces = detector.detect(img)
     return img, (faces if faces is not None else np.empty((0, 15), dtype=np.float32))
 
 
@@ -67,7 +74,8 @@ def face_vector(image: bytes | np.ndarray) -> list[float] | None:
         return None
     largest = max(faces, key=lambda f: f[2] * f[3])
     _, recognizer = _models()
-    feature = recognizer.feature(recognizer.alignCrop(img, largest))
+    with _LOCK:
+        feature = recognizer.feature(recognizer.alignCrop(img, largest))
     return [float(v) for v in np.asarray(feature).reshape(-1)]
 
 

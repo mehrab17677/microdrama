@@ -238,7 +238,7 @@ def test_a_keyframe_with_the_wrong_product_is_drawn_again_and_then_given_up(ad_s
     shot = db.fetch_one("select id from shots where spec->>'brand' = 'true'")
     calls = []
     real = images.generate_image
-    monkeypatch.setattr(images, "generate_image", lambda p, r=None, q=None: (calls.append(p), real(p, r, q))[1])
+    monkeypatch.setattr(images, "generate_image", lambda p, r=None, q=None, **kw: (calls.append(p), real(p, r, q, **kw))[1])
 
     def verdict(passes):
         n = {"i": 0}

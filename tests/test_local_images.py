@@ -76,7 +76,7 @@ def test_the_backend_is_used_only_when_asked_for_and_is_free(env, monkeypatch, f
     assert fake["t2i"].calls[0]["width"] == 512 and fake["t2i"].calls[0]["num_inference_steps"] == 1 and not fake["i2i"].calls
     monkeypatch.delenv("IMAGE_BACKEND")
     data, usage = images.generate_image("a portrait")                  # back to the fixture
-    assert usage["model"] == "gpt-image-2.5-flare" and len(fake["t2i"].calls) == 1
+    assert usage["model_key"] == "gpt_image_flare" and len(fake["t2i"].calls) == 1
 
 
 def test_a_reference_starts_an_image_to_image_run_from_its_middle_square(env, monkeypatch, fake):

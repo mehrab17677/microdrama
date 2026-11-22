@@ -93,7 +93,7 @@ def test_bible_rules(env):
     assert any("at least one character must be a lead" in p for p in story.validate_bible(nolead, ["female lead"], []))
     short = bible()
     short.characters[0].visual_description = "too short"
-    assert any("must be 40 to 80" in p for p in story.validate_bible(short, ["female lead"], []))
+    assert any("must be 35 to 80" in p for p in story.validate_bible(short, ["female lead"], []))
     assert any("reference material: lead 1" in p for p in story.validate_bible(bible(), ["female lead"], ["lead 1"]))
 
 

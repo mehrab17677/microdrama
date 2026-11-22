@@ -19,7 +19,7 @@ Only the master (prime) portrait exists for each character. Later stages build t
 <h2>{{ ch.c.code }} · {{ ch.c.name }} <small>({{ ch.c.role }}{% if ch.c.is_lead %}, lead{% endif %})</small></h2>
 <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-start">
 {% if ch.ref_url %}<figure style="margin:0;width:150px"><img src="{{ ch.ref_url }}" alt="reference photo" style="width:150px"><figcaption><small>Your reference photo ({{ ch.ref_role }})</small></figcaption></figure>{% endif %}
-{% if ch.master %}<figure style="margin:0;width:150px"><img src="{{ ch.master.url }}" alt="master portrait" style="width:150px"><figcaption><small>Master portrait</small></figcaption></figure>{% endif %}
+{% if ch.master %}<figure style="margin:0;width:150px"><img src="{{ ch.master.url }}" alt="master portrait" style="width:150px"><figcaption><small>Master portrait{% if at_gate and can_decide %}<br><label><input type="checkbox" name="redo" value="{{ ch.master.id }}"> redo (and this character's sheets)</label>{% endif %}</small></figcaption></figure>{% endif %}
 </div>
 {% if ch.score is not none %}<p>Similarity to your reference photo: <strong>{{ '%.2f'|format(ch.score) }}</strong> (a different person must score under 0.30)
 {% if ch.too_similar %}<span class="err" style="padding:.1rem .4rem">too similar even after regenerating</span>{% endif %}</p>{% endif %}
@@ -37,13 +37,16 @@ Only the master (prime) portrait exists for each character. Later stages build t
 
 <h2>Sets</h2>
 <div style="display:flex;gap:1rem;flex-wrap:wrap">{% for st in sets %}<figure style="margin:0;width:140px">{% if st.plate_url %}<img src="{{ st.plate_url }}" alt="{{ st.name }}" style="width:140px">{% endif %}
-<figcaption><small>{{ st.code }} {{ st.name }} · {{ st.time_of_day }}</small></figcaption>{% if st.ambience_url %}<audio controls src="{{ st.ambience_url }}" style="width:140px"></audio>{% endif %}</figure>{% endfor %}</div>
+<figcaption><small>{{ st.code }} {{ st.name }} · {{ st.time_of_day }}{% if at_gate and can_decide and st.plate_url %}<br><label><input type="checkbox" name="redo" value="set:{{ st.id }}"> redo</label>{% endif %}</small></figcaption>{% if st.ambience_url %}<audio controls src="{{ st.ambience_url }}" style="width:140px"></audio>{% endif %}</figure>{% endfor %}</div>
 
 {% if at_gate and can_decide %}
 <h2>Your decision</h2>
-<label>Notes (for a rejection)<br><input name="notes" style="width:24rem"></label>
-<p>Approving fixes every face, outfit and voice shown here. To redo some assets, tick them above and reject.</p>
-<button name="decision" value="approve">Approve the look and voices</button> <button class="quiet" name="decision" value="reject">Reject the ticked assets</button>
+<p><strong>Approve</strong> fixes every face, outfit and voice shown here. To change some pictures, <strong>tick them above</strong>, say what to change, choose a model, and redo them.</p>
+<label>What to change in the ticked pictures<br><textarea name="notes" rows="3" style="width:100%;max-width:32rem" placeholder="e.g. softer expression, longer hair, the jacket should be dark green"></textarea></label>
+<fieldset style="max-width:32rem;margin:.6rem 0"><legend>Make the ticked pictures with</legend>
+{% for m in models %}<label style="display:flex;gap:.5rem;align-items:flex-start;margin:.25rem 0"><input type="radio" name="image_model" value="{{ m.value }}"{% if loop.first %} checked{% endif %}><span><strong>{{ m.label }}</strong> · about ${{ '%.2f'|format(m.price) }} per picture<br><small class="muted">{{ m.note }}</small></span></label>{% endfor %}</fieldset>
+<p><small class="muted">The model sees your note and the rejected picture, and changes only what the note asks. A redone master also redoes that character's sheets and the line-up, because they are drawn from it. Voices ticked above are designed again.</small></p>
+<button name="decision" value="approve">Approve the look and voices</button> <button class="quiet" name="decision" value="reject">Redo the ticked pictures</button>
 </form>
 {% endif %}
 {% endblock %}

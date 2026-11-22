@@ -104,7 +104,7 @@ def test_preflight_passes_in_dry_run(db_url):
     results = preflight.run_all(dry_run=True)
     failed = [(n, m) for n, s, m in results if s == preflight.FAIL]
     assert not failed, failed
-    assert {n for n, s, _ in results if s == preflight.SKIP} == {"r2", "anthropic", "openai", "elevenlabs", "fal"}
+    assert {n for n, s, _ in results if s == preflight.SKIP} == {"r2", "anthropic", "openai", "embeddings", "elevenlabs", "fal"}
 
 
 def test_web_health():

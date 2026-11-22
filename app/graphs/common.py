@@ -67,6 +67,23 @@ def count_notes(series_id, key: str) -> int:
     return db.fetch_one("select count(*) n from audit_log where series_id = %s and action = %s", (series_id, f"note:{key}"))["n"]
 
 
+def retry_epoch(series_id, step: str) -> int:
+    """How many times a person retried this step after it failed for good. Each retry gives the step max_attempts more tries."""
+    return count_notes(series_id, f"retry:{step}")
+
+
+def retry_since(series_id, *steps: str):
+    """When the latest retry of any of these steps happened (None if never): a check step counts its redo notes and runs only after this moment."""
+    row = db.fetch_one("select max(created_at) t from audit_log where series_id = %s and action = any(%s)", (series_id, [f"note:retry:{x}" for x in steps]))
+    return row["t"] if row else None
+
+
+def count_notes_since(series_id, key: str, since) -> int:
+    if since is None:
+        return count_notes(series_id, key)
+    return db.fetch_one("select count(*) n from audit_log where series_id = %s and action = %s and created_at > %s", (series_id, f"note:{key}", since))["n"]
+
+
 def set_verdict(series_id, node: str, verdict: str) -> None:
     add_note(series_id, f"verdict:{node}", verdict)
 

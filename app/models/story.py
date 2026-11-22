@@ -24,7 +24,7 @@ class CharacterDef(BaseModel):
     is_lead: bool
     age: int
     personality: str
-    visual_description: str      # 40 to 80 words, physical and styling only
+    visual_description: str      # 35 to 80 words, physical and styling only
     speaks: bool
 
 

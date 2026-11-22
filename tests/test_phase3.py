@@ -132,7 +132,7 @@ def test_embeddings_dry_run(env):
     vecs, usage = images.embed(["alpha", "beta", "alpha"])
     assert [len(v) for v in vecs] == [1536] * 3 and vecs[0] == vecs[2] and vecs[0] != vecs[1]
     assert sum(x * x for x in vecs[0]) == pytest.approx(1.0)
-    assert images.embed([]) == ([], {"model": "text-embedding-3-small", "tokens": 0, "cost_usd": 0.0})
+    assert images.embed([]) == ([], {"model": "text-embedding-3-small", "vendor": "fal", "tokens": 0, "cost_usd": 0.0})
 
 
 # ---------------- ElevenLabs ----------------

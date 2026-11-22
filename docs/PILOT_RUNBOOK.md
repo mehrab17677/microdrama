@@ -4,13 +4,13 @@ Stop and ask the owner if: eleven_v3 does not speak Bengali; both GPT Image size
 any single step would cost more than $5 outside the pilots below.
 
 ## Before any spending
-- Credit: Anthropic, OpenAI, fal; ElevenLabs on a **paid plan**.
+- Credit: Anthropic and fal (images, embeddings, video); ElevenLabs on a **paid plan**. OpenAI is not needed with the default settings.
 - `DRY_RUN=0`, all keys set, `docker compose run --rm web python scripts/preflight.py` passes. Unset `IMAGE_BACKEND`, `EMBEDDING_BACKEND`, `VOICE_BACKEND`, `SKIP_PACK_KINDS`.
-- Re-embed the library (`python -m scripts.reembed_library` if you ingested sources with the local embedding model: the vectors from the test model are not comparable with OpenAI's) and redo any voice made by the local voice backend.
+- Re-embed the library (`python -m scripts.reembed_library` if you ingested sources with the local embedding model: the vectors from the test model are not comparable with the real ones) and redo any voice made by the local voice backend.
 - Seed the new prices and config: `python scripts/seed_config.py`.
 
 ## 1. Vendor smoke (about $2 in total)
-`DRY_RUN=0 python scripts/smoke_vendors.py --out ./smoke --yes-spend --steps openai_text,embeddings,image,seedance,avatar,lipsync,latentsync,speech,music`
+`DRY_RUN=0 python scripts/smoke_vendors.py --out ./smoke --yes-spend --steps openai_text,embeddings,image,nanobanana,seedance,avatar,lipsync,latentsync,speech,music`
 Record in `docs/VENDOR_NOTES.md`: output resolution and frame rate of each video model, which image size mode worked, whether Bengali speech came back with word timings, any parameter that differed.
 
 ## 2. Ad placement smoke (about $1.20, only for an ad client)

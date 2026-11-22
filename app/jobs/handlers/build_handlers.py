@@ -181,6 +181,7 @@ def keyframe_prompt(sid, shot: dict, labels: list[str], try_n: int) -> str:
         brand_prompt_block(sid, spec),
         "No text, no captions, no logos, no watermark." if not spec.get("placement_kind") in placement.VISUAL else "The only text or logo allowed is the one printed on the real product, exactly as in its reference pictures.",
         f"Variation {try_n}." if try_n else "",
+        (f"Reviewer correction to apply, from the finished episode: {spec['feedback_note']}" + (" The last reference image is the previous version of this frame: keep what works and change only what the correction asks." if spec.get("prev_keyframe") else "")) if spec.get("feedback_note") else "",
     ]
     return " ".join(p for p in parts if p)
 
@@ -211,13 +212,18 @@ def image_keyframe(job: dict) -> dict:
     shot = _shot(job)
     spec = shot["spec"]
     refs, labels, master = keyframe_references(sid, spec)
+    if spec.get("prev_keyframe"):                      # sent back by feedback: the rejected frame goes in last, to be corrected rather than redrawn from nothing
+        try:
+            refs.append(look.fetch_bytes(spec["prev_keyframe"]))
+        except Exception:  # noqa: BLE001 - gone from storage: the note alone still applies
+            pass
     floor = get_config("qa_thresholds")["face_match_min"]   # 0.36 (guide 11.1: keyframe_face uses the same threshold)
     usages, png, score, no_face = [], b"", None, False
     kind = spec.get("placement_kind") if spec.get("placement_kind") in placement.VISUAL else None
     brand_problems: list[str] = []
     vision_usages: list[dict] = []
     for try_n in range(3 if kind else 2):   # one more try when the face (or, for a brand shot, the product) does not match
-        png, usage = images.generate_image(keyframe_prompt(sid, shot, labels, try_n), refs or None)
+        png, usage = images.generate_image(keyframe_prompt(sid, shot, labels, try_n), refs or None, purpose="brand_keyframe" if kind else "keyframe", model=job["request"].get("model"))
         usages.append(usage)
         face_ok = True
         if look_handlers_real_faces() and master is not None and master["fv"] is not None:
@@ -254,7 +260,7 @@ def image_keyframe(job: dict) -> dict:
                     conn.execute("update shots set keyframe_r2_key = %s, status = 'keyframe_ready' where id = %s", (key, other["id"]))
     cost = sum(u["cost_usd"] for u in usages) + sum(u["cost_usd"] for u in vision_usages)
     return {"keyframe": key, "face_score": score, "references": len(refs), "actual_cost": round(cost, 6), "brand_checked": bool(kind),
-            "cost_log": [{"vendor": "openai", "model": u["model"], "units": 1, "unit_name": "image", "cost_usd": u["cost_usd"]} for u in usages] + _cost_rows(vision_usages)}
+            "cost_log": [{"vendor": u.get("vendor", "openai"), "model": u["model"], "units": 1, "unit_name": "image", "cost_usd": u["cost_usd"]} for u in usages] + _cost_rows(vision_usages)}
 
 
 def _brand_keyframe_check(sid, kind: str, png: bytes) -> tuple[bool, list[str], dict]:
@@ -287,6 +293,7 @@ def _brand_shot_request(job: dict, shot: dict) -> dict:
     mk = shot_model_key(shot)
     rules, rule_usage = shots_stage.learned_rules(sid, mk, shot["spec"]["action"])
     material = (f"Model: {mk}. Brand placement: {kind.replace('_', ' ')}.\nAction in the story: {shot['spec']['action']}\nCamera setup: {shots_stage.camera_text(shot, mk)}"
+                + (("\n" + shots_stage.feedback_line(shot["spec"])) if shot["spec"].get("feedback_note") else "")
                 + (("\nRules learned from earlier failures:\n" + "\n".join(f"- {r['rule_text']}" for r in rules)) if rules else ""))
     out, usage = llm.complete("compiler", BRAND_REQUEST_INSTRUCTIONS + brand_stage.build_action_instructions(kind), [{"role": "user", "content": material + story.notes_block(job)}],
                               schema=ShotRequest, fixture=lambda: ShotRequest(prompt=_one_sentence(shot["spec"]["action"]), camera_fixed=True))

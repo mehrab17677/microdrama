@@ -4,8 +4,8 @@
 # "on"  : real Claude for the writing and planning roles (story, scripts, originality, shot lists, line tags), on a server that is
 #         otherwise a dry run: images, voices, music, video, lip-sync, the image-judging checks and embeddings stay as samples.
 #         It asks for your Anthropic key (hidden; stored only in ~/microdrama/.env, mode 600), keeps Opus as the director (the guide's
-#         choice), uses Haiku instead of GPT for the "copy" role (no OpenAI credit needed), and plans a 6 to 8 episode series.
-# "off" : back to a pure dry run and the guide's settings (GPT copy, 45 to 50 episodes). The key stays in .env but is unused.
+#         choice), uses Haiku for the "copy" role (now also the default everywhere), and plans a 6 to 8 episode series.
+# "off" : back to a pure dry run and the guide's settings (45 to 50 episodes). The key stays in .env but is unused.
 set -euo pipefail
 MODE="${1:-}"
 cd "${DIR:-$HOME/microdrama}"
@@ -34,7 +34,7 @@ if [ "$MODE" = "on" ]; then
   echo "Live roles: $LIVE_ROLES   Director: Opus   Copy: Haiku   Episodes: 6 to 8"
 elif [ "$MODE" = "off" ]; then
   setenv LIVE_LLM_ROLES ""
-  sql "update config set value = value || '{\"director\":\"anthropic:claude-opus-5-5\",\"copy\":\"openai:gpt-6-luna\"}'::jsonb where key = 'llm_roles'"
+  sql "update config set value = value || '{\"director\":\"anthropic:claude-opus-5-5\",\"copy\":\"anthropic:claude-haiku-5-5\"}'::jsonb where key = 'llm_roles'"
   sql "update config set value = '[45, 50]'::jsonb where key = 'episode_count_range'"
   echo "Back to a pure dry run with the guide's settings."
 else

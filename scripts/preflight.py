@@ -172,26 +172,54 @@ def check_anthropic() -> Result:
     return (FAIL, "; ".join(failures)) if failures else (OK, f"{len(models)} Claude model(s) answered")
 
 
+def openai_needed() -> bool:
+    """OpenAI is needed only if images, embeddings or a language-model role is set to use it (by default none is: images and embeddings run on fal)."""
+    from app.config import get_config
+
+    try:
+        roles = get_config("llm_roles")
+        return (get_config("image_provider") == "openai" or get_config("embedding_provider") == "openai"
+                or any(str(m).startswith("openai:") for m in roles.values()))
+    except KeyError:
+        return True
+
+
 def check_openai() -> Result:
-    if not os.environ.get("OPENAI_API_KEY"):
-        return FAIL, "OPENAI_API_KEY is not set (use any placeholder when the proxy injects the key)"
+    if not openai_needed():
+        return SKIP, "not used: images and embeddings run on fal, language models on Anthropic"
     problems = []
     try:
-        from langchain.chat_models import init_chat_model
+        from app.vendors import llm
 
-        init_chat_model("openai:gpt-6-luna").invoke("Reply with one word: ok")
+        for role, model in sorted(get_config_roles().items()):
+            if model.startswith("openai:"):
+                from langchain.chat_models import init_chat_model
+
+                init_chat_model(model).invoke("Reply with one word: ok")
     except Exception as exc:  # noqa: BLE001
-        problems.append(f"gpt-6-luna: {type(exc).__name__}: {str(exc)[:120]}")
+        problems.append(f"language model: {type(exc).__name__}: {str(exc)[:120]}")
+    return (FAIL, "; ".join(problems)) if problems else (OK, "the OpenAI models in use answered")
+
+
+def get_config_roles() -> dict:
+    from app.config import get_config
+
+    return get_config("llm_roles")
+
+
+def check_embeddings() -> Result:
+    """One tiny real call through the configured embedding provider: the vectors must be 1536 numbers (the database columns)."""
+    from app.config import get_config
+    from app.vendors import images
+
     try:
-        from openai import OpenAI
-
-        emb = OpenAI().embeddings.create(model="text-embedding-3-small", input=["preflight"])
-        n = len(emb.data[0].embedding)
-        if n != 1536:
-            problems.append(f"embedding has {n} dimensions, expected 1536")
+        vecs, usage = images.embed(["preflight"])
     except Exception as exc:  # noqa: BLE001
-        problems.append(f"embeddings: {type(exc).__name__}: {str(exc)[:120]}")
-    return (FAIL, "; ".join(problems)) if problems else (OK, "gpt-6-luna answered; embeddings are 1536 numbers")
+        return FAIL, f"embeddings failed: {type(exc).__name__}: {str(exc)[:160]}"
+    n = len(vecs[0]) if vecs else 0
+    if n != images.EMBEDDING_DIMENSIONS:
+        return FAIL, f"embedding has {n} numbers, expected {images.EMBEDDING_DIMENSIONS}"
+    return OK, f"{get_config('embedding_provider')}: {usage['model']}, {n} numbers"
 
 
 def check_elevenlabs() -> Result:
@@ -248,6 +276,7 @@ VENDOR: list[tuple[str, Callable[[], Result]]] = [
     ("r2", check_r2),
     ("anthropic", check_anthropic),
     ("openai", check_openai),
+    ("embeddings", check_embeddings),
     ("elevenlabs", check_elevenlabs),
     ("fal", check_fal),
 ]

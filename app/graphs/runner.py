@@ -91,6 +91,14 @@ class GraphRunner:
                 self.graph.invoke(None, config)   # a start that was cut off
             else:
                 log.warning("series %s already started; ignoring a second start", command["series_id"])
+        elif command["kind"] == "retry":
+            node = (command["payload"] or {}).get("node")
+            if node:
+                self.graph.invoke(Command(goto=node), config)      # a person retried after a final failure: enter the graph at the step that failed
+            elif snap.next and not paused:
+                self.graph.invoke(None, config)                    # the engine itself stopped: carry on from the last checkpoint
+            else:
+                log.warning("retry for series %s has nothing to restart", command["series_id"])
         elif paused:
             self.graph.invoke(Command(resume=command["payload"]), config)
         elif snap.next:

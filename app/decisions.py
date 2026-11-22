@@ -46,7 +46,20 @@ def _lock_gate(conn, series_id, gate: int) -> dict:
     return s
 
 
-def decide_gate(conn, series_id, user_id, gate: int, decision: str, notes: str = "", target: str = "", voices: dict | None = None, story_text: str | None = None) -> dict:
+def look_targets(conn, series_id, target: str) -> list[str]:
+    """The Look-gate ids that exist: character asset ids, or set:<id> for a set plate. Unknown ids are dropped."""
+    out = []
+    for raw in (i.strip() for i in (target or "").split(",") if i.strip()):
+        if raw.startswith("set:"):
+            if conn.execute("select 1 from sets where series_id = %s and id::text = %s", (series_id, raw[4:])).fetchone():
+                out.append(raw)
+        elif conn.execute("select 1 from character_assets where series_id = %s and id::text = %s", (series_id, raw)).fetchone():
+            out.append(raw)
+    return out
+
+
+def decide_gate(conn, series_id, user_id, gate: int, decision: str, notes: str = "", target: str = "", voices: dict | None = None, story_text: str | None = None,
+                image_model: str = "") -> dict:
     """resume_gate for gates 1, 2, 3 and 5. Returns the payload sent to the graph."""
     if gate not in (1, 2, 3, 5):
         raise DecisionError(400, "Gates 0 and 4 are not decided here.")
@@ -82,16 +95,26 @@ def decide_gate(conn, series_id, user_id, gate: int, decision: str, notes: str =
         if missing:
             raise DecisionError(400, "Choose one voice for every speaking character. Missing: " + ", ".join(missing) + ".")
     elif gate == 3 and decision == "reject":
-        ids = [i.strip() for i in target.split(",") if i.strip()]
-        if not ids or not conn.execute("select 1 from character_assets where series_id = %s and id::text = any(%s) limit 1", (series_id, ids)).fetchone():
-            raise DecisionError(400, "Rejecting the look needs the asset IDs to redo.")
+        from app.vendors import images
+
+        ids = look_targets(conn, series_id, target)
+        if not ids:
+            raise DecisionError(400, "Select the pictures to redo.")
+        if image_model and image_model not in images.IMAGE_MODELS:
+            raise DecisionError(400, f"Choose an image model: {', '.join(images.IMAGE_MODELS)}.")
+        target = ",".join(ids)
         if notes:
             audit.log(conn, None, "note:reviewer_look", series_id, {"text": notes})
 
     payload = {"type": "gate", "gate": gate, "decision": decision, "notes": notes, "target": target}
+    if gate == 3 and decision == "reject":
+        payload["image_model"] = image_model or ""
     if gate == 3 and decision == "approve":
         payload["voices"] = {k: str(v) for k, v in (voices or {}).items()}
-    _commit(conn, series_id, user_id, gate, decision, notes, payload, {"target": target} if target else None)
+    detail = {"target": target} if target else None
+    if payload.get("image_model"):
+        detail = {**(detail or {}), "image_model": payload["image_model"]}
+    _commit(conn, series_id, user_id, gate, decision, notes, payload, detail)
     return payload
 
 

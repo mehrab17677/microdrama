@@ -23,6 +23,36 @@ def _fb(shot: dict) -> dict:
     return {"fb": fid} if fid else {}
 
 
+def img_vendor() -> Vendor:
+    """Image jobs are filed under the provider that makes the pictures (fal by default), so vendor_concurrency limits and cost rows are right."""
+    return Vendor.fal if images.job_vendor() == "fal" else Vendor.openai
+
+
+def copy_vendor() -> Vendor:
+    """Jobs that call the "copy" language-model role are filed under that role's provider (Anthropic by default)."""
+    from app.vendors import llm
+
+    return Vendor.openai if llm.model_for_role("copy").startswith("openai:") else Vendor.anthropic
+
+
+def look_identity(kind: str, character_id, tags: dict | None = None) -> str:
+    """A stable name for one look image, so a Look-gate rejection (its notes, the model chosen, the rejected picture) finds the job that remakes it."""
+    if kind == "master":
+        return f"master:{character_id}"
+    if kind == "lineup":
+        return "lineup"
+    return f"pack:{character_id}:{kind}:{_tag_key(tags or {})}"
+
+
+def look_redo(sid, identity: str) -> dict:
+    """What the Look gate said about this image: {notes, model, prev}; empty when it was never rejected. It goes into the job request, so the redo is new work."""
+    row = db.fetch_one("select detail from audit_log where series_id = %s and action = 'note:look_redo' and detail->>'identity' = %s order by created_at desc, id desc limit 1", (sid, identity))
+    if not row:
+        return {}
+    d = row["detail"]
+    return {k: v for k, v in (("notes", d.get("text")), ("model", d.get("model")), ("prev", d.get("prev"))) if v}
+
+
 def _digest(parts) -> str:
     return hashlib.sha1("|".join(map(str, parts)).encode()).hexdigest()[:12]
 
@@ -98,14 +128,14 @@ def masters_items(sid, batch, rnd) -> list[WorkItem]:
         " (select 1 from character_assets a where a.character_id = c.id and a.kind = 'master') order by c.code", (sid,)
     ):
         n = 1 + common.count_notes(sid, f"likeness_retry:{c['id']}")
-        items.append(WorkItem(JobKind.image_master, OPENAI, {"character_id": str(c["id"]), "try": n, "use_photo": n <= 2}))
+        items.append(WorkItem(JobKind.image_master, img_vendor(), {"character_id": str(c["id"]), "try": n, "use_photo": n <= 2, **look_redo(sid, look_identity("master", c["id"]))}))
     return items
 
 
 def emotion_group_items(sid, batch, rnd) -> list[WorkItem]:
     speaking = common.speaking_codes(sid)
     return [
-        WorkItem(JobKind.llm_audio_tag, OPENAI, {"purpose": "emotion_groups", "character_id": str(c["id"])})
+        WorkItem(JobKind.llm_audio_tag, copy_vendor(), {"purpose": "emotion_groups", "character_id": str(c["id"])})
         for c in db.fetch_all("select id, code from characters where series_id = %s and emotion_groups is null order by code", (sid,))
         if c["code"] in speaking
     ]
@@ -122,11 +152,12 @@ def pack_items(sid, batch, rnd) -> list[WorkItem]:
         have = {(a["kind"], _tag_key(a["tags"])) for a in db.fetch_all("select kind, tags from character_assets where character_id = %s", (c["id"],))}
         for spec in look.pack_plan(c["is_lead"], outfits, groups):
             if spec["kind"] not in skip and (spec["kind"], _tag_key(spec["tags"])) not in have:
-                items.append(WorkItem(JobKind.image_pack, OPENAI, {"character_id": str(c["id"]), "kind": spec["kind"], "tags": spec["tags"], "try": retry, "rev": rev}))
+                items.append(WorkItem(JobKind.image_pack, img_vendor(), {"character_id": str(c["id"]), "kind": spec["kind"], "tags": spec["tags"], "try": retry, "rev": rev,
+                                                                            **look_redo(sid, look_identity(spec["kind"], c["id"], spec["tags"]))}))
     if chars and "lineup" not in skip and not db.fetch_one("select 1 from character_assets where series_id = %s and kind = 'lineup'", (sid,)):
-        items.append(WorkItem(JobKind.image_pack, OPENAI, {"character_id": None, "kind": "lineup", "tags": {}, "try": retry, "rev": rev}))
+        items.append(WorkItem(JobKind.image_pack, img_vendor(), {"character_id": None, "kind": "lineup", "tags": {}, "try": retry, "rev": rev, **look_redo(sid, "lineup")}))
     for s in db.fetch_all("select id, code, time_of_day from sets where series_id = %s and plate_r2_key is null order by code, time_of_day", (sid,)):
-        items.append(WorkItem(JobKind.image_set_plate, OPENAI, {"set_id": str(s["id"]), "rev": rev}))
+        items.append(WorkItem(JobKind.image_set_plate, img_vendor(), {"set_id": str(s["id"]), "rev": rev, **look_redo(sid, f"plate:{s['id']}")}))
     for s in db.fetch_all("select distinct code from sets where series_id = %s and ambience_r2_key is null order by code", (sid,)):
         items.append(WorkItem(JobKind.sfx_ambience, ELEVEN, {"set_code": s["code"], "rev": rev}, estimated_cost=eleven.sfx_cost(30)))
     if db.fetch_one("select 1 from brand_briefs where series_id = %s and product_sheet is null limit 1", (sid,)):   # ad placement: describe the real product once
@@ -158,7 +189,7 @@ def audio_tag_items(sid, batch, rnd) -> list[WorkItem]:
     for e in common.batch_episodes(sid, batch):
         lines = db.fetch_all("select id, version from dialogue_lines where episode_id = %s and audio_tag is null order by idx", (e["id"],))
         if lines:
-            items.append(WorkItem(JobKind.llm_audio_tag, OPENAI, {"purpose": "line_tags", "episode": e["number"], "lines": _digest(f"{l['id']}:{l['version']}" for l in lines),
+            items.append(WorkItem(JobKind.llm_audio_tag, copy_vendor(), {"purpose": "line_tags", "episode": e["number"], "lines": _digest(f"{l['id']}:{l['version']}" for l in lines),
                                                                                   **({"note": note} if (note := common.latest_note(sid, f"voice_note:{e['number']}")) else {})}, episode_id=e["id"]))
     return items
 
@@ -199,7 +230,7 @@ def keyframe_items(sid, batch, rnd) -> list[WorkItem]:
             if key in queued_keys:
                 continue  # the representative's job will link this shot when it finishes
             queued_keys.add(key)
-        items.append(WorkItem(JobKind.image_keyframe, OPENAI, {"shot_id": str(s["id"]), "attempt": s["attempts"], "cache_key": key, **_fb(s)}, episode_id=s["episode_id"], shot_id=s["id"]))
+        items.append(WorkItem(JobKind.image_keyframe, img_vendor(), {"shot_id": str(s["id"]), "attempt": s["attempts"], "cache_key": key, **_fb(s)}, episode_id=s["episode_id"], shot_id=s["id"]))
     return items
 
 
@@ -342,5 +373,5 @@ def learn_items(sid, batch, rnd) -> list[WorkItem]:
 
 def delivery_items(sid, batch, rnd) -> list[WorkItem]:
     items = [WorkItem(JobKind.ffmpeg_master, LOCAL, {"rev": common.gate_revs(sid, 5)})]
-    items += [WorkItem(JobKind.llm_marketing, OPENAI, {"episode": e["number"]}, episode_id=e["id"]) for e in db.fetch_all("select id, number from episodes where series_id = %s order by number", (sid,))]
+    items += [WorkItem(JobKind.llm_marketing, copy_vendor(), {"episode": e["number"]}, episode_id=e["id"]) for e in db.fetch_all("select id, number from episodes where series_id = %s order by number", (sid,))]
     return items

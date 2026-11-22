@@ -113,7 +113,7 @@ def test_progress_counts_jobs_per_stage_and_draws_a_percentage(runner):
     db.execute("update series set status = 'failed', current_stage = 'story' where id = %s", (sid,))
     db.execute("update jobs set status = 'failed', error = 'boom' where id = (select id from jobs where series_id = %s and kind = 'llm_bible' limit 1)", (sid,))
     failed = overview.progress(db.fetch_one("select * from series where id = %s", (sid,)))
-    assert failed["failure"] == {"kind": "llm_bible", "error": "boom"} and failed["stages"][2]["state"] == "failed"
+    assert (failed["failure"]["kind"], failed["failure"]["error"]) == ("llm_bible", "boom") and failed["stages"][2]["state"] == "failed"
 
 
 def test_the_production_page_and_dashboard_show_the_progress(runner):
