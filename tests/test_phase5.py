@@ -719,10 +719,13 @@ def test_routing_costs_and_requests():
     assert costs.shot_clip_cost("A", 8, 8, 0) > costs.shot_clip_cost("B2", 8, 8, 1) > 0 and costs.shot_clip_cost("INSERT", 4, 4, 0) == 0
     assert costs.shot_lipsync_cost("B2", 3, 8) == pytest.approx(0.14) and costs.shot_lipsync_cost("A", 0, 8) == 0
     shot = {"id": "s1", "keyframe_r2_key": "k.png", "render_duration": 8, "attempts": 0, "line_count": 3}
-    req = r.video_request("B2", shot, "p", False)
-    assert req["arguments"]["generate_audio"] is False and req["arguments"]["duration"] == "8" and req["arguments"]["aspect_ratio"] == "9:16" and req["arguments"]["image_key"] == "k.png"
-    assert r.video_request("A", shot, "p", True)["arguments"]["generate_audio"] is True
+    req = r.video_request("B2", shot, "p", False)      # Kling V3 Pro: start_image_url, duration as text, no aspect_ratio (it follows the picture)
+    assert req["arguments"]["generate_audio"] is False and req["arguments"]["duration"] == "8" and req["arguments"]["start_image_key"] == "k.png" and "aspect_ratio" not in req["arguments"]
+    silent = {**shot, "line_count": 0}
+    assert r.video_request("A", silent, "p", True)["arguments"]["generate_audio"] is True
     assert r.video_request("C", shot, "p", False)["arguments"]["generate_audio"] is False and "aspect_ratio" not in r.video_request("C", shot, "p", False)["arguments"]
+    fallback = r.video_request("S", shot, "p", False)["arguments"]      # Seedance 2.0 image-to-video
+    assert fallback["aspect_ratio"] == "9:16" and fallback["image_key"] == "k.png" and fallback["resolution"] == "1080p"
     assert r.stable_seed("s1", 0) != r.stable_seed("s1", 1) and r.stable_seed("s1", 0) == int(hashlib.sha256(b"s10").hexdigest()[:8], 16)
 
 

@@ -25,7 +25,7 @@ def planned_seconds(line_durations: list[float], est_seconds: float | None, timi
 def render_seconds(tier: str, planned: float) -> int:
     """Seconds requested from the model. Minimum clip lengths apply (Seedance 4, Kling V3 3); the
     clip is trimmed back to `planned` in the compile step. B1 follows the audio length."""
-    if tier in ("A", "B2"):
+    if tier in ("A", "B2", "S"):      # Seedance 2.0 needs at least 4 s; the same floor is kept for Kling so a clip is never shorter than the shot
         return int(clamp(math.ceil(planned), 4, 10))
     if tier == "C":
         return int(clamp(math.ceil(planned), 3, 10))

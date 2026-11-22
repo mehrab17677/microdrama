@@ -43,12 +43,12 @@ CONFIG_DEFAULTS: dict[str, tuple[object, str]] = {
             "sfx_per_minute": 0.12,
             "stt_per_hour": 0.20,
             "video": {
-                "seedance_1_5_pro": {"per_m_tokens_audio": 2.40, "per_m_tokens_silent": 1.20},
                 "kling_v3_pro": {"per_s_audio": 0.168, "per_s_silent": 0.112},
                 "kling_avatar_v2_pro": {"per_audio_s": 0.115},
                 "kling_lipsync": {"per_s": 0.014, "step_s": 5},
                 "latentsync": {"flat": 0.20, "flat_up_to_s": 40, "per_s_over": 0.005},
                 "seedance_2_0_ref": {"per_s": {"720p": 0.3024, "1080p": 0.682}, "resolution": "1080p"},
+                "seedance_2_0_i2v": {"per_s": {"720p": 0.3024, "1080p": 0.682}, "resolution": "1080p"},   # fallback for tiers A, B2, C; the 1080p price is the family rate (fal shows 720p on the page): UNVERIFIED
             },
         },
         "Prices used for estimates and cost_log (guide 6.1-6.4, with verified changes)",

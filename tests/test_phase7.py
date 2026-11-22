@@ -192,16 +192,23 @@ def test_the_trait_sheet_is_written_from_the_photo(env, monkeypatch):
 
 def profile(**over):
     base = dict(voice_gender="female", voice_age="adult", pitch="low", pace="slow", accent="Bangladeshi", texture="warm", energy="calm", speech_habits="pauses",
-                design_prompt="A calm adult woman with a warm low voice who speaks slowly, pausing before hard truths, with a quiet and restrained energy.")
+                design_prompt="Native English, neutral American. Female, 35 to 40. Studio quality. Persona: composed investigator. Emotion: calm, guarded, resolute. Warm, low, measured timbre; she pauses before hard truths.")
     return VoiceProfile(**{**base, **over})
 
 
 def test_voice_profile_rules():
-    assert look.validate_voice_profile(profile(), "bn") == []
-    assert any("Bangladeshi" in p for p in look.validate_voice_profile(profile(accent="neutral"), "bn"))
+    assert look.validate_voice_profile(profile(design_prompt=look.example_design_prompt("bn")), "bn") == []
+    assert any("Bangladeshi" in p for p in look.validate_voice_profile(profile(accent="neutral", design_prompt=look.example_design_prompt("bn")), "bn"))
     assert look.validate_voice_profile(profile(accent="neutral"), "en") == []
     assert any("pitch must not be empty" in p for p in look.validate_voice_profile(profile(pitch=" "), "en"))
     assert any("design_prompt is 2 words" in p for p in look.validate_voice_profile(profile(design_prompt="A voice."), "en"))
+    base = profile().design_prompt
+    assert any("start with the language" in p for p in look.validate_voice_profile(profile(design_prompt=base.replace("Native English, neutral American. ", "")), "en"))
+    assert any("audio quality" in p for p in look.validate_voice_profile(profile(design_prompt=base.replace("Studio quality. ", "")), "en"))
+    assert any("effect words" in p for p in look.validate_voice_profile(profile(design_prompt=base + " Slight echo on the voice."), "en"))
+    assert not any("effect words" in p for p in look.validate_voice_profile(profile(design_prompt=base + " Speaks into a microphone."), "en"))      # whole words only
+    assert any("Native Bangla" in p for p in look.validate_voice_profile(profile(), "bn"))                                                       # an English-variant prompt on a Bangla series
+    assert look.validate_voice_profile(profile(design_prompt=look.example_design_prompt("bn")), "bn") == [] and look.validate_voice_profile(profile(design_prompt=look.example_design_prompt("en")), "en") == []
 
 
 def test_emotion_group_rules():
@@ -260,7 +267,7 @@ def test_voice_design_uses_the_characters_own_lines_and_saves_a_sample(env, monk
     monkeypatch.setattr(eleven, "design_voice", lambda d, t=None: (asked.append((d, t)), real(d, t))[1])
     out = run(L.voice_design, sid, "voice_design", character_id=str(c1["id"]), **{"try": 0}, rev=0)
     own = [r["text"] for r in db.fetch_all("select text from dialogue_lines where character_id = %s order by created_at, idx limit 12", (c1["id"],))]
-    assert asked[0][0].startswith("A calm adult woman") and len(asked[0][1]) >= 100 and asked[0][1].startswith(own[0])      # previewed on the character's own lines
+    assert asked[0][0].startswith("Native ") and "Studio quality" in asked[0][0] and len(asked[0][1]) >= 100 and asked[0][1].startswith(own[0])      # previewed on the character's own lines
     asset = db.fetch_one("select * from character_assets where kind = 'voice_sample'")
     assert asset["tags"]["voice_id"] == out["voice_id"] and storage.local_file(asset["r2_key_clean"]).read_bytes()[:3] in (b"ID3", b"\xff\xfb", b"\xff\xf3")
     with pytest.raises(PermanentError, match="no voice profile"):

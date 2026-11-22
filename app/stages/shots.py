@@ -19,7 +19,7 @@ from app.vendors import images
 
 SPEAKING_TYPES = ("speaking_closeup", "speaking_wider", "hero")
 SHOT_TYPES = ("non_speaking", "speaking_closeup", "speaking_wider", "hero", "static_insert")
-LIKELY_MODEL_KEY = "seedance_1_5_pro"   # tiers A and B2, the most common ones, decide which setups to leave out
+LIKELY_MODEL_KEY = "kling_v3_pro"   # tiers A, B2 and C, the most common ones, decide which setups to leave out
 SETUP_LIMIT = 30
 
 SHOT_INSTRUCTIONS = """You are the Lead Director of a vertical micro-drama (9:16, 75 to 90 seconds per episode).
@@ -347,7 +347,7 @@ def request_kind(tier: str, has_lines: bool, fallback_used: bool = False) -> str
     tier = method_tier(tier, fallback_used, 1 if has_lines else 0)
     if tier == "B1":
         return "closeup"
-    if has_lines and tier in ("B2", "C"):
+    if has_lines and tier in ("B2", "C", "S"):
         return "speaking"
     return "silent"
 

@@ -14,11 +14,9 @@ def shot_clip_cost(tier: str, planned: float, render: int, line_count: int, fall
     key = MODEL_KEY_BY_TIER[tier]
     if tier == "B1":
         return falmedia.estimate_cost(key, duration=planned)                       # audio seconds
-    if tier == "A":
-        return falmedia.estimate_cost(key, duration=render, audio=True)
-    if tier == "B2":
-        return falmedia.estimate_cost(key, duration=render, audio=False)
-    return falmedia.estimate_cost(key, duration=render, audio=(line_count == 0))   # C
+    if tier == "S":
+        return falmedia.estimate_cost(key, duration=render)                        # Seedance 2.0: one price per second, audio included
+    return falmedia.estimate_cost(key, duration=render, audio=(line_count == 0))   # Kling V3 (A, B2, C): native audio only when nobody speaks
 
 
 def shot_lipsync_cost(tier: str, line_count: int, render: int, fallback_used: bool = False, engine: str = "kling") -> float:

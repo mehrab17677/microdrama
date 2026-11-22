@@ -189,7 +189,7 @@ def test_a_brand_shot_never_shares_a_keyframe_with_another_shot():
 # ---------------------------------------------------------------- routing, request and cost
 
 def test_a_brand_shot_goes_to_seedance_2_reference_to_video(env):
-    assert routing.model_key("A", brand=True) == routing.model_key("B2", brand=True) == "seedance_2_0_ref" and routing.model_key("A") == "seedance_1_5_pro"
+    assert routing.model_key("A", brand=True) == routing.model_key("B2", brand=True) == "seedance_2_0_ref" and routing.model_key("A") == "kling_v3_pro"
     assert routing.model_key("B1", brand=True) == "kling_avatar_v2_pro"                   # a close-up avatar shot cannot carry a brand shot (the director may not plan one)
     assert falmedia.SEEDANCE2_REF == "bytedance/seedance-2.0/reference-to-video"
     assert costs.shot_clip_cost("A", 5, 5, 0, False, True) == pytest.approx(5 * 0.682) and falmedia.estimate_cost("seedance_2_0_ref", duration=4) == pytest.approx(2.728)

@@ -291,7 +291,7 @@ def test_shot_request_prompt_rules(env):
     assert any("names the character" in p for p in S.validate_request(sid, a, ShotRequest(prompt="Lead 1 turns. No music. No speech.", camera_fixed=False)))
     assert any("on-screen text" in p for p in S.validate_request(sid, a, ShotRequest(prompt="A caption appears. No music. No speech.", camera_fixed=False)))
     assert any("1500" in p for p in S.validate_request(sid, a, ShotRequest(prompt="x" * 1501 + " No music. No speech.", camera_fixed=False)))
-    speaking = S.fixture_request(b2, "seedance_1_5_pro")
+    speaking = S.fixture_request(b2, "kling_v3_pro")
     assert S.validate_request(sid, b2, speaking) == [] and line in speaking.prompt
     bad = ShotRequest(prompt="She speaks. No other character speaks.", camera_fixed=False)
     assert any("must contain" in p for p in S.validate_request(sid, b2, bad)) and any("line text" in p for p in S.validate_request(sid, b2, bad))
@@ -305,19 +305,19 @@ def test_a_line_that_says_a_name_is_allowed_inside_the_spoken_text(env):
     B.llm_shot_list(job_for(sid, "llm_shot_list", ep["id"], episode=1))
     b2 = shot_of(sid, "B2")
     db.execute("update dialogue_lines set text = text || ' Lead 1' where id = %s", (b2["line_ids"][0],))
-    assert S.validate_request(sid, b2, S.fixture_request(b2, "seedance_1_5_pro")) == []
+    assert S.validate_request(sid, b2, S.fixture_request(b2, "kling_v3_pro")) == []
 
 
 def test_the_compiler_gets_the_camera_text_for_its_model_and_the_nearest_rules(env, monkeypatch):
     sid, ep = planned_story()
     B.llm_shot_list(job_for(sid, "llm_shot_list", ep["id"], episode=1))
-    db.execute("update camera_setups set prompt_by_model = %s::jsonb", (json.dumps({"seedance_1_5_pro": "slow dolly in, shallow focus"}),))
-    for i, model in enumerate(("seedance_1_5_pro", "seedance_1_5_pro", "kling_v3_pro")):
+    db.execute("update camera_setups set prompt_by_model = %s::jsonb", (json.dumps({"kling_v3_pro": "slow dolly in, shallow focus"}),))
+    for i, model in enumerate(("kling_v3_pro", "kling_v3_pro", "seedance_2_0_i2v")):
         (vec,), _ = images.embed([f"rule {i}"])
         db.execute("insert into learned_rules (model_key, rule_text, category, embedding) values (%s, %s, 'artefact', %s::vector)", (model, f"Rule number {i}.", db.to_vector(vec)))
     seen = recorder(monkeypatch)
     a = shot_of(sid, "A")
-    out = B.llm_shot_request({**job_for(sid, "llm_shot_request", ep["id"], model_key="seedance_1_5_pro"), "shot_id": a["id"]})
+    out = B.llm_shot_request({**job_for(sid, "llm_shot_request", ep["id"], model_key="kling_v3_pro"), "shot_id": a["id"]})
     body = seen[-1].messages[0]["content"]
     assert "slow dolly in, shallow focus" in body and "Rule number 0." in body and "Rule number 1." in body and "Rule number 2." not in body
     assert seen[-1].role == "compiler" and out["prompt"].endswith("No music. No speech.") and len(out["rule_ids"]) == 2

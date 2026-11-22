@@ -675,7 +675,7 @@ def apply_feedback(state):
                     conn.execute("update shots set status = %s, attempts = 0, sync_attempts = 0, fallback_used = false, keyframe_r2_key = null, raw_clip_r2_key = null,"
                                  " final_clip_r2_key = null, spec = spec || %s where id = %s", (new, fb, s["id"]))
                 elif cat == "lipsync":
-                    new = "rendered" if method_tier(s["tier"], s["fallback_used"], len(s["line_ids"])) in ("B2", "C") else "keyframe_ready"
+                    new = "rendered" if method_tier(s["tier"], s["fallback_used"], len(s["line_ids"])) in ("B2", "C", "S") else "keyframe_ready"
                     conn.execute("update shots set status = %s, sync_attempts = 0, spec = spec || %s where id = %s", (new, fb, s["id"]))
                 elif cat == "voice":
                     conn.execute("update dialogue_lines set version = version + 1, audio_r2_key = null, audio_tag = null, duration_seconds = null, alignment = null where id = any(%s)", (s["line_ids"],))

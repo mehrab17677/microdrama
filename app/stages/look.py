@@ -45,8 +45,20 @@ Write about 60 words covering: apparent age range, build, hair, styling and mood
 marks (scars, tattoos, birthmarks, unusual features). Plain prose, no lists, English."""
 
 VOICE_INSTRUCTIONS = """You are a voice director. From the character definition, specify the character's speaking voice.
-Fill every field. `accent`: for a Bangla series it must state a Bangladeshi accent; otherwise name a neutral accent. `design_prompt` is one
-paragraph (30 to 90 words) a voice-design tool can read to create the voice: gender, age, pitch, pace, texture, energy and speech habits."""
+Fill every field. `accent`: for a Bangla series it must state a Bangladeshi accent; otherwise name a neutral accent.
+`design_prompt` is the text ElevenLabs Voice Design reads (30 to 90 words, one paragraph). Write it in exactly this shape:
+"Native <language and regional variant>. <Gender>, <age range>. <Audio quality>. Persona: <2 to 5 words>. Emotion: <2 or 3 adjectives>. <One or two sentences on timbre, pitch, pace and delivery.>"
+Rules: the language and regional variant come first (Bangla series: "Native Bangla, Bangladeshi (standard Dhaka)"; English: name the variant, for example "Native English, neutral American");
+state the audio quality ("Studio quality" or "Excellent audio quality"); with an accent use "thick" or "slight" (not "strong"), and use the word accent only for a real accent, never for intonation;
+describe pitch, texture and pace in plain words; never use effect words (reverb, echo, phone, tape); never give a name."""
+
+FX_WORDS = re.compile(r"\b(reverb|echo|phone|telephone|tape)\b", re.I)
+
+
+def example_design_prompt(language: str) -> str:
+    """A prompt in the recommended shape (used by dry-run fixtures and tests)."""
+    native = "Native Bangla, Bangladeshi (standard Dhaka)." if language == "bn" else "Native English, neutral American."
+    return native + " Female, 35 to 40. Studio quality. Persona: composed investigator. Emotion: calm, guarded, resolute. Warm, low, measured timbre; she pauses before hard truths and never raises her voice."
 
 EMOTION_INSTRUCTIONS = """Group a character's distinct free-text emotions into at most 8 groups. Each group has a one-word lower-case `name`
 (for example anger, sadness, joy, fear, calm) and lists the emotions it covers. Every emotion given must appear in exactly one group."""
@@ -95,8 +107,18 @@ def validate_voice_profile(profile: VoiceProfile, language: str) -> list[str]:
     problems = [f"{name} must not be empty" for name, value in profile.model_dump().items() if not str(value).strip()]
     if language == "bn" and "bangladesh" not in profile.accent.lower():
         problems.append("for a Bangla series the accent must state a Bangladeshi accent")
-    if profile.design_prompt.strip() and not 20 <= word_count(profile.design_prompt) <= 120:
-        problems.append(f"design_prompt is {word_count(profile.design_prompt)} words; write one paragraph of 30 to 90")
+    prompt = profile.design_prompt.strip()
+    if prompt and not 20 <= word_count(prompt) <= 120:
+        problems.append(f"design_prompt is {word_count(prompt)} words; write one paragraph of 30 to 90")
+    if prompt:
+        if not prompt.lower().startswith("native "):
+            problems.append("design_prompt must start with the language and regional variant, for example 'Native English, neutral American.'")
+        if "quality" not in prompt.lower():
+            problems.append("design_prompt must state the audio quality, for example 'Studio quality.'")
+        if FX_WORDS.search(prompt):
+            problems.append("design_prompt must not use effect words (reverb, echo, phone, tape)")
+        if language == "bn" and not re.search(r"bangla|bengali", prompt, re.I):
+            problems.append("for a Bangla series design_prompt must say Native Bangla (Bangladeshi)")
     return problems
 
 

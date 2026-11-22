@@ -165,7 +165,7 @@ Whole stage about 3 minutes and $0.015 for this slice. With the real image and v
 - Intake rejects `bn` when `VOICE_BACKEND=local`.
 
 ## Phase 8 decisions (build one episode)
-- Shot list: role `director`, schemas in `app/models/shots.py` (`est_seconds` added per guide 10). The 30 nearest camera setups are retrieved by embedding and exclude any that avoid `seedance_1_5_pro` (the likely tier A/B2 model). New setups are inserted once, with an embedding, origin series and genre. `emotion_group` is added to the stored spec from the speaker's `characters.emotion_groups` map (falls back to `calm`) so the keyframe cache key and the expression reference can use it.
+- Shot list: role `director`, schemas in `app/models/shots.py` (`est_seconds` added per guide 10). The 30 nearest camera setups are retrieved by embedding and exclude any that avoid `kling_v3_pro` (the likely tier A/B2 model). New setups are inserted once, with an embedding, origin series and genre. `emotion_group` is added to the stored spec from the speaker's `characters.emotion_groups` map (falls back to `calm`) so the keyframe cache key and the expression reference can use it.
 - Wardrobe check: a shot's outfit must exist for that character and, where the wardrobe plan covers (episode, scene) for them, must equal the planned outfit.
 - Keyframe references: master portrait, the outfit image, the speaker's expression image for the emotion group, the set plate. A kind that does not exist (sheets skipped by a limited image backend) is left out, so the master portrait alone is enough. The face pre-check (`keyframe_face`, threshold = `face_match_min` 0.36) is recorded as a precheck row; it only fails the job when the image backend can hold an identity (not `local_sd`). A shot with no detectable face passes with `{no_face: true}`. One internal retry, then PermanentError (the graph retries as a new attempt).
 - Shot request: role `compiler`; the prompt rules are checked in code (ending phrases, line text present, no character names or codes, no brand name, no on-screen-text words, one sentence for B1, at most 1,500 characters). Spoken line text is exempt from the name check. The ids of the learned rules used are returned in the job result as `rules_used` for Phase 9 to credit.
@@ -208,7 +208,7 @@ the checks and the limits are in `docs/AD_PLACEMENT.md`. Decisions worth recordi
 - **Model:** brand shots use `bytedance/seedance-2.0/reference-to-video` on fal (schema read from fal's page: `prompt`, `image_urls` up to 9 with `@Image1` tags, `resolution` 480p/720p/1080p/4k,
   `duration` 4 to 15 s, `aspect_ratio`, `generate_audio`, `bitrate_mode`, output `video.url` and `seed`). We send the keyframe plus the real product photos and logo (3 to 5 images, the
   range the prompt guides recommend), 1080p, 9:16, high bitrate. Price in `price_book.video.seedance_2_0_ref`: $0.3024/s at 720p and $0.682/s at 1080p (fal, Nov 2026), so a 5 s brand shot is about
-  $3.40 per attempt. Repeated redraws can pass the 125% budget hold; that is expected and the owner approves more. Seedance 1.5 Pro stays the model for ordinary shots.
+  $3.40 per attempt. Repeated redraws can pass the 125% budget hold; that is expected and the owner approves more. Kling V3 Pro is the model for ordinary shots (Seedance 1.5 Pro, used before, was removed from fal).
 - **No fallback model for brand shots** (a different model is a different, unapproved look): the ladder is redraw the keyframe and the clip three times with stricter motion each time, then `needs_human`.
 - **Checks:** `brand_fidelity` (shot level, role `vision_qa_strong`, decision and label comparison in code: label lines must match the printed text at 85% similarity per line and 75% of the lines),
   the same check on the keyframe before it is used, and `qa_brand` at episode level (`placement_count`, `exposure` against the brief's minimum seconds, `exclusions`, `claims`).
@@ -234,3 +234,24 @@ Read from fal's pages on 20 to 22 Nov 2026 (no key or credit was available to ca
 - **Embeddings on fal:** `openrouter/router/openai/v1/embeddings`, an OpenAI-format pass-through to OpenRouter (request body `{model, input}`; response `data[].embedding`, `usage` replaced by fal's accounting incl. `cost`). Model string used: `openai/text-embedding-3-small`. fal's schema for it is untyped, so field behaviour follows OpenRouter's docs; batch and rate limits are not documented on fal's page (the client sends 64 texts per request).
 - **Client:** `fal_client.subscribe(endpoint, arguments=..., interval=2.0, client_timeout=300)` (blocking; image jobs run inside a worker, so no webhook is used). References are sent as JPEG data URIs scaled to 1600 px on the long edge.
 - **Unverified until a real call:** quality of identity and label text per model, content-check behaviour on real faces and logos, Nano Banana Pro's 2K portrait size, fal's embedding limits.
+
+
+## fal endpoint check, 22 Nov 2026 (what the app calls, and whether fal still serves it)
+Read from each model's page on fal (no key or credit was available to call them). **Seedance 1.5 Pro was removed from fal on 11 Nov 2026** ("API requests are no longer supported"); the app no longer uses it.
+
+| Used for | Endpoint | Status | Price on fal |
+|---|---|---|---|
+| Tiers A, B2, C (main) | `fal-ai/kling-video/v3/pro/image-to-video` | active | $0.112 per second silent, $0.168 with audio |
+| Tier B1 (close-up speaker) | `fal-ai/kling-video/ai-avatar/v2/pro` | active | $0.115 per second of audio |
+| Lip-sync (main) | `fal-ai/kling-video/lipsync/audio-to-video` | active (video 2 to 10 s, 720 to 1920 px) | $0.014 per second, in 5-second steps |
+| Lip-sync (fallback) | `fal-ai/latentsync` | active | $0.20 up to 40 s |
+| Fallback for A, B2, C | `bytedance/seedance-2.0/image-to-video` | active | $0.682 per second at 1080p (page also shows $0.3024 at 720p; fast tier `.../fast/image-to-video` $0.2419 at 720p) |
+| Brand shots | `bytedance/seedance-2.0/reference-to-video` | active (up to 9 images, 4 to 15 s) | $0.682 per second at 1080p |
+| Images | `openai/gpt-image-2.5/flare/edit` and `/text-to-image` | active | see `docs/IMAGE_MODELS.md` |
+| Images | `fal-ai/nano-banana-pro/edit` and `fal-ai/nano-banana-pro` | active | $0.15 |
+| Embeddings | `openrouter/router/openai/v1/embeddings` | active | per token |
+Replaced: `fal-ai/bytedance/seedance/v1.5/pro/image-to-video` (removed). Seedance 2.5 exists but only at 480p and 720p, so it cannot make the 1080-wide clips the app requires.
+
+- **Kling V3 Pro request:** `prompt`, `start_image_url`, `duration` as a string "3" to "15", `generate_audio`, optional `end_image_url`, `negative_prompt`, `cfg_scale`, `multi_prompt`, `elements`. There is no `camera_fixed`, `aspect_ratio` or `resolution` (the output follows the start frame): the app says "The camera does not move." in the prompt instead. Native audio supports Chinese and English only; the app uses it only for shots with no speech. The page does not state the output resolution or frame rate: record them from the first clip (`smoke_vendors.py --steps kling`). Stop and ask if it is under 1080 px wide.
+- **Seedance 2.0 image-to-video request:** `prompt`, `image_url`, `resolution` (480p, 720p, 1080p), `duration` ("auto" or "4" to "15"), `aspect_ratio` (includes 9:16), `generate_audio`, `seed`, `end_image_url`. Audio is included in the price whether or not it is generated.
+- **Routing now:** A and C use Kling V3 with audio on only when nobody speaks; B2 and C shots that speak are Kling V3 without audio, then lip-sync; after two failed attempts A, B2 and C use method S (Seedance 2.0 at 1080p, then lip-sync when they speak); B1's fallback is a silent Kling clip plus lip-sync.

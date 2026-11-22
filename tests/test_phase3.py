@@ -195,9 +195,9 @@ def test_music_sfx_voice_and_stt_dry_run(env):
 # ---------------- fal media ----------------
 
 def test_price_formulas_match_the_guide(env):
-    assert falmedia.estimate_cost("seedance_1_5_pro", duration=1, audio=True, fps=24) == pytest.approx(0.11664, rel=1e-4)
-    assert falmedia.estimate_cost("seedance_1_5_pro", duration=1, audio=False, fps=24) == pytest.approx(0.05832, rel=1e-4)
-    assert falmedia.estimate_cost("seedance_1_5_pro", duration=4, audio=False) == pytest.approx(0.23328, rel=1e-4)
+    assert falmedia.estimate_cost("seedance_2_0_i2v", duration=4) == pytest.approx(2.728)                    # Seedance 2.0 at 1080p, $0.682 per second, audio included
+    with pytest.raises(PermanentError):
+        falmedia.estimate_cost("seedance_1_5_pro", duration=4)                                              # removed from fal on 11 Nov 2026
     assert falmedia.estimate_cost("kling_v3_pro", duration=10, audio=True) == pytest.approx(1.68)
     assert falmedia.estimate_cost("kling_v3_pro", duration=10, audio=False) == pytest.approx(1.12)
     assert falmedia.estimate_cost("kling_avatar_v2_pro", duration=5) == pytest.approx(0.575)
@@ -216,9 +216,9 @@ def test_lipsync_limits_are_checked_locally():
 
 
 def test_fal_dry_run_submit_poll_and_download(env, tmp_path):
-    rid = falmedia.submit(falmedia.SEEDANCE, {"prompt": "x"})
+    rid = falmedia.submit(falmedia.KLING_V3, {"prompt": "x"})
     assert rid.startswith("dry-")
-    state, payload = falmedia.poll_status({"endpoint": falmedia.SEEDANCE, "vendor_request_id": rid})
+    state, payload = falmedia.poll_status({"endpoint": falmedia.KLING_V3, "vendor_request_id": rid})
     assert state == "done"
     out = falmedia.download(falmedia.video_url(payload), tmp_path / "clip.mp4")
     assert out.read_bytes() == fixtures.fixture_bytes("clip_4s_1080x1920.mp4")
@@ -276,7 +276,7 @@ def submitted_job(request_id="req-1"):
     owner = db.fetch_one("insert into users (email, display_name, password_hash, role, status) values ('o@x.io','o','h','member','active') returning id")["id"]
     sid = uuid.uuid4()
     db.execute("insert into series (id, owner_id, title, category, language, status, current_stage, thread_id) values (%s,%s,'t','standard','bn','waiting_jobs','build',%s)", (sid, owner, str(sid)))
-    j = ledger.enqueue("video_clip", series_id=sid, vendor="fal", endpoint=falmedia.SEEDANCE, request={"k": 1})
+    j = ledger.enqueue("video_clip", series_id=sid, vendor="fal", endpoint=falmedia.KLING_V3, request={"k": 1})
     queue.claim("w")
     assert ledger.mark_submitted(j["id"], request_id)
     return j["id"]

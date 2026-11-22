@@ -98,7 +98,7 @@ def llm_trait_sheet(job: dict) -> dict:
 def _voice_fixture(language: str, is_lead: bool) -> VoiceProfile:
     return VoiceProfile(voice_gender="female", voice_age="adult", pitch="low", pace="measured", accent="Bangladeshi" if language == "bn" else "neutral",
                         texture="warm", energy="restrained", speech_habits="pauses before hard truths",
-                        design_prompt="A calm adult woman with a warm, low, measured voice and a restrained energy, who pauses before saying hard truths and never raises her voice.")
+                        design_prompt=look.example_design_prompt(language))
 
 
 def llm_voice_profile(job: dict) -> dict:
@@ -287,7 +287,8 @@ def voice_design(job: dict) -> dict:
         text = " ".join(lines)
         if len(text) >= 100:
             break
-    previews, usage = eleven.design_voice(char["voice_profile"]["design_prompt"], text[:900] or None)
+    # Voice Design is charged by the characters of the preview text (once for the three samples), so keep it short: 100 to 300 characters.
+    previews, usage = eleven.design_voice(char["voice_profile"]["design_prompt"], text[:300] or None)
     series = common.get_series(sid)
     voice_id = eleven.save_voice(previews[0]["generated_voice_id"], f"{series['title'][:24]}-{char['code']}", char["voice_profile"]["design_prompt"])
     asset_id = uuid.uuid4()

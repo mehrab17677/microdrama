@@ -6,24 +6,27 @@ TIER_BY_TYPE = {
     "hero": "C",
     "static_insert": "INSERT",
 }
+# Seedance 1.5 Pro (the old model for tiers A and B2) was removed from fal on 11 Nov 2026. Tiers A, B2 and C now all use Kling V3 Pro (audio on for a shot
+# with no speech, off for a shot that is lip-synced afterwards); method "S", Seedance 2.0 image-to-video at 1080p, is the fallback after two failed attempts.
 MODEL_KEY_BY_TIER = {
-    "A": "seedance_1_5_pro",
+    "A": "kling_v3_pro",
     "B1": "kling_avatar_v2_pro",
-    "B2": "seedance_1_5_pro",
+    "B2": "kling_v3_pro",
     "C": "kling_v3_pro",
+    "S": "seedance_2_0_i2v",
 }
 BRAND_MODEL_KEY = "seedance_2_0_ref"   # brand placement shots: Seedance 2.0 reference-to-video with the real product pictures
 FALLBACK_MODEL_KEY_BY_TIER = {  # guide 11.5, used when the main model has failed twice
-    "A": "kling_v3_pro",
-    "B1": "seedance_1_5_pro",   # the B2 method: silent clip, then lip-sync
-    "B2": "kling_v3_pro",
-    "C": "seedance_1_5_pro",
+    "A": "seedance_2_0_i2v",
+    "B1": "kling_v3_pro",       # the B2 method: silent clip, then lip-sync
+    "B2": "seedance_2_0_i2v",
+    "C": "seedance_2_0_i2v",
 }
 
 
-# Which tier's METHOD a fallback shot uses (guide 11.5): A -> Kling V3 with audio on; B1 -> the B2 method (Seedance silent clip,
-# then lip-sync); B2 -> Kling V3 with audio off, then lip-sync; C -> Seedance, with lip-sync when it carries speech.
-FALLBACK_METHOD = {"A": "C", "B1": "B2", "B2": "C"}
+# Which METHOD a fallback shot uses (guide 11.5): A, B2 and C -> S (Seedance 2.0 image-to-video, with lip-sync afterwards when the shot carries speech);
+# B1 -> the B2 method (a silent Kling V3 clip, then lip-sync).
+FALLBACK_METHOD = {"A": "S", "B1": "B2", "B2": "S", "C": "S"}
 
 
 def tier_for(shot_type: str) -> str:
@@ -34,8 +37,6 @@ def method_tier(tier: str, fallback_used: bool = False, line_count: int = 0) -> 
     """The tier whose rendering method is used: the shot's own, or the fallback route's after two failed attempts."""
     if not fallback_used or tier == "INSERT":
         return tier
-    if tier == "C":
-        return "B2" if line_count else "A"
     return FALLBACK_METHOD[tier]
 
 
@@ -55,8 +56,8 @@ def shot_model_key(shot: dict) -> str:
 
 
 def needs_lipsync(tier: str, line_count: int, fallback_used: bool = False) -> bool:
-    """B2 and C shots that carry speech are lip-synced afterwards (a B1 shot too once it uses the B2 fallback method)."""
-    return method_tier(tier, fallback_used, line_count) in ("B2", "C") and line_count > 0
+    """B2, C and S shots that carry speech are lip-synced afterwards (a B1 shot too once it uses the B2 fallback method)."""
+    return method_tier(tier, fallback_used, line_count) in ("B2", "C", "S") and line_count > 0
 
 
 def lipsync_engine(sync_attempts: int, kling_failures: int, fallback: str = "latentsync") -> str:

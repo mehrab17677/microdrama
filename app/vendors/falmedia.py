@@ -17,7 +17,8 @@ from app.jobs.errors import PermanentError
 from app.vendors import fixtures
 from app.vendors.errors import map_exception
 
-SEEDANCE = "fal-ai/bytedance/seedance/v1.5/pro/image-to-video"
+# Seedance 1.5 Pro (fal-ai/bytedance/seedance/v1.5/pro/image-to-video) was REMOVED from fal on 11 Nov 2026 and is no longer used.
+SEEDANCE2_I2V = "bytedance/seedance-2.0/image-to-video"   # the fallback for tiers A, B2 and C (480p/720p/1080p, 4 to 15 s, audio is included in the price)
 KLING_V3 = "fal-ai/kling-video/v3/pro/image-to-video"
 KLING_AVATAR = "fal-ai/kling-video/ai-avatar/v2/pro"
 KLING_LIPSYNC = "fal-ai/kling-video/lipsync/audio-to-video"
@@ -26,7 +27,7 @@ LATENTSYNC = "fal-ai/latentsync"   # open-source LatentSync hosted on fal: the l
 LATENTSYNC_MAX_SECONDS = 40
 
 ENDPOINT_BY_MODEL_KEY = {
-    "seedance_1_5_pro": SEEDANCE,
+    "seedance_2_0_i2v": SEEDANCE2_I2V,
     "kling_v3_pro": KLING_V3,
     "kling_avatar_v2_pro": KLING_AVATAR,
     "kling_lipsync": KLING_LIPSYNC,
@@ -45,10 +46,10 @@ def webhook_url() -> str | None:
 def estimate_cost(model_key: str, *, duration: float = 0, audio: bool = False, width: int = 1080, height: int = 1920, fps: float | None = None) -> float:
     """USD. `duration` is the rendered seconds (video seconds; audio seconds for the avatar)."""
     video = get_config("price_book")["video"]
-    if model_key == "seedance_1_5_pro":
-        p = video["seedance_1_5_pro"]
-        tokens = height * width * (fps or get_config("seedance_fps")) * duration / 1024
-        return round(tokens / 1e6 * (p["per_m_tokens_audio"] if audio else p["per_m_tokens_silent"]), 6)
+    if model_key not in video:       # a price added after this database was seeded: use the shipped default
+        from app.config_defaults import CONFIG_DEFAULTS
+
+        video = {**CONFIG_DEFAULTS["price_book"][0]["video"], **video}
     if model_key == "kling_v3_pro":
         p = video["kling_v3_pro"]
         return round(duration * (p["per_s_audio"] if audio else p["per_s_silent"]), 6)
@@ -57,8 +58,8 @@ def estimate_cost(model_key: str, *, duration: float = 0, audio: bool = False, w
     if model_key == "kling_lipsync":
         p = video["kling_lipsync"]
         return round(math.ceil(duration / p["step_s"]) * p["step_s"] * p["per_s"], 6)
-    if model_key == "seedance_2_0_ref":   # per generated second, by resolution (fal, Nov 2026); audio costs the same on or off
-        p = video["seedance_2_0_ref"]
+    if model_key in ("seedance_2_0_ref", "seedance_2_0_i2v"):   # per generated second, by resolution (fal, Nov 2026); audio costs the same on or off
+        p = video[model_key]
         return round(duration * p["per_s"][p["resolution"]], 6)
     if model_key == "latentsync":   # a flat price for a video up to 40 s, then per second
         p = video["latentsync"]

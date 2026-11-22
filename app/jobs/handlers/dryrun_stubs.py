@@ -18,6 +18,7 @@ from app.graphs import common, work
 from app.media import ffmpeg, requests as media_requests
 from app.media.routing import needs_lipsync, tier_for
 from app.qa import face
+from app.stages import look
 from app.vendors import eleven, falmedia, fixtures, storage
 
 LINES_PER_EPISODE = 15      # five speaking shots of three lines each
@@ -151,7 +152,7 @@ def llm_trait_sheet(job):
 def llm_voice_profile(job):
     series = common.get_series(job["series_id"])
     profile = {"voice_gender": "female", "voice_age": "adult", "pitch": "low", "pace": "measured", "accent": "Bangladeshi" if series["language"] == "bn" else "neutral",
-               "texture": "warm", "energy": "restrained", "speech_habits": "pauses before hard truths", "design_prompt": "A calm adult woman with a warm, low, measured voice."}
+               "texture": "warm", "energy": "restrained", "speech_habits": "pauses before hard truths", "design_prompt": look.example_design_prompt(series["language"])}
     db.execute("update characters set voice_profile = %s where id = %s", (Jsonb(profile), job["request"]["character_id"]))
     return {}
 

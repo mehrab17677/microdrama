@@ -1,6 +1,6 @@
 """Real-money smoke test for the vendor clients (guide section 13, phase 3). Run by a person.
 
-    DRY_RUN=0 python scripts/smoke_vendors.py --out DIR --steps openai_text,embeddings,image,nanobanana,seedance --yes-spend
+    DRY_RUN=0 python scripts/smoke_vendors.py --out DIR --steps embeddings,image,nanobanana,kling,seedance --yes-spend
 
 Steps (estimated cost): openai_text (~$0), embeddings (~$0), image (2 images), seedance (4 s silent
 1080p, ~$0.23), avatar (3 s audio, ~$0.35), lipsync (4 s clip, ~$0.07), latentsync (4 s clip, $0.20),
@@ -95,15 +95,31 @@ def step_nanobanana(out: Path) -> None:
                              "note": "usage.size is what fal returned before scaling to 1080x1920; record it in docs/VENDOR_NOTES.md"}
 
 
+def _first_frame(out: Path) -> Path:
+    return next((p for p in (out / "image_ref.png", out / "image_plain.png", out / "nano_ref.png") if p.exists()), ROOT / "tests/fixtures/image_1080x1920.png")
+
+
+def step_kling(out: Path) -> None:
+    """Kling V3 Pro image-to-video, the main model for shots with no speech (A) and for lip-synced shots (B2, C): 4 s, silent. About $0.45.
+    Record the output size and frame rate in docs/VENDOR_NOTES.md: fal's page does not state them, and the stop condition is a clip under 1080 px wide."""
+    args = {"prompt": "She turns her head slowly and looks at the camera. The camera does not move.", "start_image_url": data_uri(_first_frame(out).read_bytes(), "image/png"),
+            "duration": "4", "generate_audio": False}
+    rid = falmedia.submit(falmedia.KLING_V3, args)
+    payload = wait_for_fal(falmedia.KLING_V3, rid)
+    path = falmedia.download(falmedia.video_url(payload), out / "kling_v3.mp4")
+    RESULTS["kling"] = {"request_id": rid, "probe": probe(path), "video_url": falmedia.video_url(payload),
+                        "estimated_cost": falmedia.estimate_cost("kling_v3_pro", duration=4, audio=False), "payload_keys": sorted(payload)}
+
+
 def step_seedance(out: Path) -> None:
-    image = next((p for p in (out / "image_ref.png", out / "image_plain.png") if p.exists()), ROOT / "tests/fixtures/image_1080x1920.png")
-    args = {"prompt": "She turns her head slowly and looks at the camera. Soft room ambience.", "image_url": data_uri(image.read_bytes(), "image/png"),
-            "resolution": "1080p", "duration": "4", "aspect_ratio": "9:16", "generate_audio": False, "camera_fixed": False}
-    rid = falmedia.submit(falmedia.SEEDANCE, args)
-    payload = wait_for_fal(falmedia.SEEDANCE, rid)
+    """Seedance 2.0 image-to-video, the fallback after two failed attempts: 4 s at 1080p (about $2.73). Seedance 1.5 Pro no longer exists on fal."""
+    args = {"prompt": "She turns her head slowly and looks at the camera. The camera does not move. Soft room ambience.", "image_url": data_uri(_first_frame(out).read_bytes(), "image/png"),
+            "resolution": "1080p", "duration": "4", "aspect_ratio": "9:16", "generate_audio": False}
+    rid = falmedia.submit(falmedia.SEEDANCE2_I2V, args)
+    payload = wait_for_fal(falmedia.SEEDANCE2_I2V, rid)
     path = falmedia.download(falmedia.video_url(payload), out / "seedance.mp4")
     RESULTS["seedance"] = {"request_id": rid, "probe": probe(path), "video_url": falmedia.video_url(payload),
-                           "estimated_cost": falmedia.estimate_cost("seedance_1_5_pro", duration=4, audio=False, fps=24), "payload_keys": sorted(payload)}
+                           "estimated_cost": falmedia.estimate_cost("seedance_2_0_i2v", duration=4), "payload_keys": sorted(payload)}
 
 
 def tone(out: Path, seconds: int) -> Path:
@@ -180,7 +196,7 @@ def step_latentsync(out: Path) -> None:
     RESULTS["latentsync"] = {"request_id": rid, "probe": probe(path), "estimated_cost": falmedia.estimate_cost("latentsync", duration=4)}
 
 
-STEPS = {f.__name__[5:]: f for f in (step_openai_text, step_embeddings, step_image, step_nanobanana, step_seedance, step_avatar, step_lipsync, step_latentsync, step_brandshot, step_speech, step_music)}
+STEPS = {f.__name__[5:]: f for f in (step_openai_text, step_embeddings, step_image, step_nanobanana, step_kling, step_seedance, step_avatar, step_lipsync, step_latentsync, step_brandshot, step_speech, step_music)}
 
 
 def main() -> int:

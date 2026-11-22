@@ -1,6 +1,6 @@
 # Pilot runbook (a person runs these; they spend money)
 
-Stop and ask the owner if: eleven_v3 does not speak Bengali; both GPT Image sizes are refused; a Kling or Seedance output is not 9:16 or is under 1080 px wide; Kling LipSync refuses a Seedance 1080p clip;
+Stop and ask the owner if: eleven_v3 does not speak Bengali; both GPT Image sizes are refused; a Kling or Seedance output is not 9:16 or is under 1080 px wide; Kling LipSync refuses a Kling V3 or Seedance 1080p clip;
 any single step would cost more than $5 outside the pilots below.
 
 ## Before any spending
@@ -10,7 +10,7 @@ any single step would cost more than $5 outside the pilots below.
 - Seed the new prices and config: `python scripts/seed_config.py`.
 
 ## 1. Vendor smoke (about $2 in total)
-`DRY_RUN=0 python scripts/smoke_vendors.py --out ./smoke --yes-spend --steps openai_text,embeddings,image,nanobanana,seedance,avatar,lipsync,latentsync,speech,music`
+`DRY_RUN=0 python scripts/smoke_vendors.py --out ./smoke --yes-spend --steps embeddings,image,nanobanana,kling,seedance,avatar,lipsync,latentsync,speech,music`
 Record in `docs/VENDOR_NOTES.md`: output resolution and frame rate of each video model, which image size mode worked, whether Bengali speech came back with word timings, any parameter that differed.
 
 ## 2. Ad placement smoke (about $1.20, only for an ad client)
@@ -21,7 +21,7 @@ Watch the clip: is the product's shape and label right? Did the request go throu
 The same 10 lines with 5 candidate Bangla voices and 5 English voices. A native listener confirms the Bangla accent and that names are pronounced right (pronunciation list).
 
 ## 4. Lip-sync test (about $5)
-One Bangla line through tier B1 (avatar) and through tier B2 (Seedance silent clip, then Kling LipSync). Judge sync by eye (there is no scorer). Try the LatentSync fallback on a clip that Kling handled badly.
+One Bangla line through tier B1 (avatar) and through tier B2 (a silent Kling V3 clip, then Kling LipSync). Judge sync by eye (there is no scorer). Try the LatentSync fallback on a clip that Kling handled badly.
 
 ## 5. Three-episode Bangla pilot (about $60)
 Start a production, approve the gates, stop at Gate 4. Record: first-pass yield per tier, lip-sync quality for B1 and B2 separately, generated seconds per used second, cost per image, the tier mix, how often the budget prompt appeared, the projection against the real spend.

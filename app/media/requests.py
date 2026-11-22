@@ -18,14 +18,16 @@ def stable_seed(shot_id, attempt) -> int:
 
 def video_request(tier: str, shot: dict, prompt: str, camera_fixed: bool, shot_audio_key: str | None = None) -> dict:
     """shot: {id, keyframe_r2_key, render_duration, attempts, line_count}."""
-    if tier in ("A", "B2"):
-        return {"endpoint": falmedia.SEEDANCE, "arguments": {
-            "prompt": prompt, "image_key": shot["keyframe_r2_key"], "resolution": "1080p", "duration": str(shot["render_duration"]),
-            "aspect_ratio": "9:16", "generate_audio": tier == "A", "camera_fixed": camera_fixed, "seed": stable_seed(shot["id"], shot["attempts"])}}
-    if tier == "C":
+    if camera_fixed and "camera" not in prompt.lower():   # neither Kling V3 nor Seedance 2.0 has a camera-lock switch: say it in the prompt
+        prompt = prompt.rstrip() + " The camera does not move."
+    if tier in ("A", "B2", "C"):    # Kling V3 Pro image-to-video: start_image_url, duration "3" to "15"; native audio only for a shot with no speech
         return {"endpoint": falmedia.KLING_V3, "arguments": {
             "prompt": prompt, "start_image_key": shot["keyframe_r2_key"], "duration": str(shot["render_duration"]),
             "generate_audio": shot["line_count"] == 0}}
+    if tier == "S":                 # the fallback: Seedance 2.0 image-to-video (image_url, resolution, duration "4" to "15", aspect_ratio, generate_audio, seed)
+        return {"endpoint": falmedia.SEEDANCE2_I2V, "arguments": {
+            "prompt": prompt, "image_key": shot["keyframe_r2_key"], "resolution": "1080p", "duration": str(shot["render_duration"]),
+            "aspect_ratio": "9:16", "generate_audio": shot["line_count"] == 0, "seed": stable_seed(shot["id"], shot["attempts"])}}
     if tier == "B1":
         return {"endpoint": falmedia.KLING_AVATAR, "arguments": {"image_key": shot["keyframe_r2_key"], "audio_key": shot_audio_key, "prompt": prompt}}
     raise ValueError(f"tier {tier} has no video request")
