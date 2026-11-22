@@ -31,6 +31,30 @@ NOT_LISTED_ALERT = (
 )
 
 
+class Problem(str):
+    """A validation message that remembers which form field it belongs to, so the page can show it beside that field.
+    It is still a plain string everywhere else (the JSON `errors` list, tests)."""
+
+    field: str | None
+
+    def __new__(cls, field: str | None, message: str):
+        obj = super().__new__(cls, message)
+        obj.field = field
+        return obj
+
+
+LEAD_ROLES = (("male lead", "male_photo"), ("female lead", "female_photo"))
+ROLE_FIELD = dict(LEAD_ROLES)
+
+
+def fields_of(problems: list) -> dict[str, list[str]]:
+    """{field: [messages]} for the page; a problem without a field goes under "_"."""
+    out: dict[str, list[str]] = {}
+    for p in problems:
+        out.setdefault(getattr(p, "field", None) or "_", []).append(str(p))
+    return out
+
+
 @dataclass
 class IntakeForm:
     category: str = ""
@@ -55,6 +79,7 @@ class IntakeForm:
     forbidden_claims: list[str] = field(default_factory=list)  # things the story must never claim
     min_exposure_seconds: float = 3.0
     brand_assets: list[tuple[str, str, str, bytes, str]] = field(default_factory=list)  # (kind, label, file name, bytes, view)
+    two_leads: bool = False             # the form's two photo boxes: a male lead and a female lead, both required
 
 
 def parse_keywords(text: str) -> list[str]:
@@ -84,107 +109,118 @@ def clean_text(text: str, limit: int = 600) -> str:
     return re.sub(r"[ \t]+", " ", text).strip()[:limit]
 
 
-def validate_brand(form: IntakeForm) -> list[str]:
+def validate_brand(form: IntakeForm) -> list[Problem]:
     """The brand pack (docs/AD_PLACEMENT.md): what the product is and how it is used, the printed text, a logo and real product photos."""
-    problems: list[str] = []
+    problems: list[Problem] = []
     if len(form.product_description.split()) < MIN_DESCRIPTION_WORDS:
-        problems.append(f"Describe the product and how it is used in at least {MIN_DESCRIPTION_WORDS} words (yours has {len(form.product_description.split())}).")
+        problems.append(Problem("product_description", f"Describe the product and how it is used in at least {MIN_DESCRIPTION_WORDS} words (yours has {len(form.product_description.split())})."))
     if not [t for t in form.label_texts if t.strip()]:
-        problems.append("List the text printed on the product pack (at least one line); the checks compare the label with it.")
+        problems.append(Problem("label_texts", "List the text printed on the product pack (at least one line); the checks compare the label with it."))
     if not 1 <= form.min_exposure_seconds <= 10:
-        problems.append("The minimum on-screen seconds per placement must be between 1 and 10.")
+        problems.append(Problem("min_exposure_seconds", "The minimum on-screen seconds per placement must be between 1 and 10."))
     if not HEX_COLOR.match(form.brand_color.strip() or "#FFFFFF"):
-        problems.append("The brand colour must look like #1A2B3C.")
+        problems.append(Problem("brand_color", "The brand colour must look like #1A2B3C."))
     if not form.brand_assets:
-        problems.append("Add the brand assets: at least one logo and at least one real photo of the product (front view).")
+        problems.append(Problem("brand_files", "Add the brand assets: at least one logo and at least one real photo of the product (front view)."))
         return problems
     kinds = {k for k, _, _, _, _ in form.brand_assets}
     if "logo" not in kinds:
-        problems.append("Add at least one logo file (PNG, JPEG or WebP; a transparent PNG is best).")
+        problems.append(Problem("brand_files", "Add at least one logo file (PNG, JPEG or WebP; a transparent PNG is best)."))
     visual = [p for p in form.placement_types if p in VISUAL_PLACEMENTS]
     fronts = [a for a in form.brand_assets if a[0] in ("product", "app_screen") and a[4] in ("front", "screen")]
     if visual and not fronts:
-        problems.append("Add at least one real photo of the product with the view set to front.")
+        problems.append(Problem("brand_files", "Add at least one real photo of the product with the view set to front."))
     for i, (kind, label, name, data, view) in enumerate(form.brand_assets, 1):
         who = f"Brand asset {i} ({label or name})"
         if kind not in BRAND_ASSET_KINDS:
-            problems.append(f"{who}: the kind must be one of {', '.join(BRAND_ASSET_KINDS)}.")
+            problems.append(Problem("brand_files", f"{who}: the kind must be one of {', '.join(BRAND_ASSET_KINDS)}."))
             continue
         if kind == "product" and view not in PRODUCT_VIEWS:
-            problems.append(f"{who}: the view must be one of {', '.join(PRODUCT_VIEWS)}.")
+            problems.append(Problem("brand_files", f"{who}: the view must be one of {', '.join(PRODUCT_VIEWS)}."))
         img = _open(data)
         if img is None:
-            problems.append(f"{who} is not a readable image: use PNG, JPEG or WebP (models cannot use SVG).")
+            problems.append(Problem("brand_files", f"{who} is not a readable image: use PNG, JPEG or WebP (models cannot use SVG)."))
             continue
         minimum = MIN_PRODUCT_SIDE if kind in ("product", "app_screen") else MIN_LOGO_SIDE
         if min(img.size) < minimum:
-            problems.append(f"{who} is too small: the shortest side must be at least {minimum} pixels so the label can be read.")
+            problems.append(Problem("brand_files", f"{who} is too small: the shortest side must be at least {minimum} pixels so the label can be read."))
     return problems
 
 
-def validate(form: IntakeForm) -> list[str]:
-    """Every problem at once, in the guide's order."""
-    problems: list[str] = []
+def validate(form: IntakeForm) -> list[Problem]:
+    """Every problem at once, in the guide's order, each tagged with its form field."""
+    problems: list[Problem] = []
     # 1. category (and the brand brief)
     if form.category not in ("standard", "ad_placement"):
-        problems.append("Choose a category: standard drama or ad placement drama.")
+        problems.append(Problem("category", "Choose a category: standard drama or ad placement drama."))
     elif form.category == "ad_placement":
         if not form.brand_name.strip():
-            problems.append("Brand name is required for an ad placement drama.")
+            problems.append(Problem("brand_name", "Brand name is required for an ad placement drama."))
         if not form.product.strip():
-            problems.append("Product is required for an ad placement drama.")
+            problems.append(Problem("product", "Product is required for an ad placement drama."))
         if not form.placement_types or any(p not in PLACEMENT_TYPES for p in form.placement_types):
-            problems.append("Choose at least one placement type (" + ", ".join(PLACEMENT_TYPES) + ").")
+            problems.append(Problem("placement_types", "Choose at least one placement type (" + ", ".join(PLACEMENT_TYPES) + ")."))
         problems += validate_brand(form)
     # 2. genre
     if form.genre_id:
         if not _ready_genre(form.genre_id):
-            problems.append("That genre has no processed sources yet.")
+            problems.append(Problem("genre_id", "That genre has no processed sources yet."))
     elif form.custom_genre.strip():
         words = len(form.story_text.split())
         minimum = int(get_config("story_min_words"))
         if words < minimum:
-            problems.append(f"A genre that is not in the library needs a complete story of your own: at least {minimum:,} words (yours has {words:,}).")
+            problems.append(Problem("story_text", f"A genre that is not in the library needs a complete story of your own: at least {minimum:,} words (yours has {words:,})."))
     else:
-        problems.append(NOT_LISTED_ALERT)
+        problems.append(Problem("genre_id", NOT_LISTED_ALERT))
     # 3. keywords
     if not 3 <= len(form.keywords) <= 8:
-        problems.append(f"Give 3 to 8 keywords (you gave {len(form.keywords)}).")
+        problems.append(Problem("keywords", f"Give 3 to 8 keywords (you gave {len(form.keywords)})."))
     # 4. language
     if form.language not in ("bn", "en"):
-        problems.append("Choose the dialogue language: Bangla or English.")
+        problems.append(Problem("language", "Choose the dialogue language: Bangla or English."))
     elif form.language == "bn" and os.environ.get("VOICE_BACKEND") == "local":
-        problems.append("Bangla is not available in this test setup: the open-source test voice (VOICE_BACKEND=local) speaks English only. "
-                        "Choose English, or unset VOICE_BACKEND once the ElevenLabs key is configured.")
-    big = [("Character reference", [d for _, d in form.char_refs]), ("Aesthetic reference", form.aesthetic_refs), ("Brand asset", [a[3] for a in form.brand_assets])]
-    for label, items in big:
-        for i, d in enumerate(items, 1):
-            if len(d) > MAX_IMAGE_BYTES:
-                problems.append(f"{label} {i} is larger than {MAX_IMAGE_BYTES // (1024 * 1024)} MB.")
-    # 5. character references
-    if not form.char_refs:
-        problems.append("Add at least one character reference photo.")
+        problems.append(Problem("language", "Bangla is not available in this test setup: the open-source test voice (VOICE_BACKEND=local) speaks English only. "
+                                "Choose English, or unset VOICE_BACKEND once the ElevenLabs key is configured."))
     for i, (role, data) in enumerate(form.char_refs, 1):
-        label = f"Character reference {i}" + (f" ({role.strip()})" if role.strip() else "")
+        if len(data) > MAX_IMAGE_BYTES:
+            who = f"The {role.strip().lower()} photo" if form.two_leads and role.strip().lower() in ROLE_FIELD else f"Character reference {i}"
+            problems.append(Problem(ROLE_FIELD.get(role.strip().lower(), "char_files"), f"{who} is larger than {MAX_IMAGE_BYTES // (1024 * 1024)} MB."))
+    for i, d in enumerate(form.aesthetic_refs, 1):
+        if len(d) > MAX_IMAGE_BYTES:
+            problems.append(Problem("aesthetic_files", f"Aesthetic reference {i} is larger than {MAX_IMAGE_BYTES // (1024 * 1024)} MB."))
+    for i, a in enumerate(form.brand_assets, 1):
+        if len(a[3]) > MAX_IMAGE_BYTES:
+            problems.append(Problem("brand_files", f"Brand asset {i} is larger than {MAX_IMAGE_BYTES // (1024 * 1024)} MB."))
+    # 5. character references
+    if form.two_leads:
+        have = {role.strip().lower() for role, _ in form.char_refs}
+        for role, fld in LEAD_ROLES:
+            if role not in have:
+                problems.append(Problem(fld, f"Add a clear photo of the {role}."))
+    elif not form.char_refs:
+        problems.append(Problem("char_files", "Add at least one character reference photo."))
+    for i, (role, data) in enumerate(form.char_refs, 1):
+        fld = ROLE_FIELD.get(role.strip().lower(), "char_files")
+        label = f"The {role.strip().lower()} photo" if form.two_leads and role.strip().lower() in ROLE_FIELD else f"Character reference {i}" + (f" ({role.strip()})" if role.strip() else "")
         if not role.strip():
-            problems.append(f"{label} needs a role label.")
+            problems.append(Problem(fld, f"{label} needs a role label."))
         img = _open(data)
         if img is None:
-            problems.append(f"{label} is not a readable image.")
+            problems.append(Problem(fld, f"{label} is not a readable image."))
             continue
         if min(img.size) < MIN_SIDE:
-            problems.append(f"{label} is too small: the shortest side must be at least {MIN_SIDE} pixels.")
+            problems.append(Problem(fld, f"{label} is too small: the shortest side must be at least {MIN_SIDE} pixels."))
             continue
         n = face.count_faces(data)
         if n != 1:
-            problems.append(f"{label} must show exactly one clear face (found {n}).")
+            problems.append(Problem(fld, f"{label} must show exactly one clear face (found {n})."))
     # 6. aesthetic references
     note_words = len(form.aesthetic_note.split())
     if len(form.aesthetic_refs) < 3 and note_words < 20:
-        problems.append("Give at least 3 aesthetic reference images, or an aesthetic note of at least 20 words.")
+        problems.append(Problem("aesthetic_files", "Give at least 3 aesthetic reference images, or an aesthetic note of at least 20 words."))
     for i, data in enumerate(form.aesthetic_refs, 1):
         if _open(data) is None:
-            problems.append(f"Aesthetic reference {i} is not a readable image.")
+            problems.append(Problem("aesthetic_files", f"Aesthetic reference {i} is not a readable image."))
     return problems
 
 

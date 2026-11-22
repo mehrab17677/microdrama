@@ -1,11 +1,11 @@
 {% extends "base.html" %}{% block title %}Library{% endblock %}
 {% block body %}<h1>Library</h1>
 <h2>Add sources</h2>
-<form class="stack" method="post" action="/library/upload" enctype="multipart/form-data" style="max-width:32rem">
+<form class="stack" method="post" action="/library/upload" enctype="multipart/form-data" style="max-width:32rem" data-inline novalidate>
 <label>Genre
-<input name="genre" id="genre" list="genre-list" required autocomplete="off" placeholder="e.g. revenge romance">
+<input name="genre" id="genre" list="genre-list" autocomplete="off" placeholder="e.g. revenge romance">
 <datalist id="genre-list"></datalist></label>
-<label>Files (.txt, .epub, .pdf)<input type="file" name="files" multiple required accept=".txt,.epub,.pdf"></label>
+<label>Files (.txt, .epub, .pdf)<input type="file" name="files" multiple accept=".txt,.epub,.pdf"></label>
 <button>Upload</button></form>
 <script>
 // Genre suggestions while typing (guide 12.3).

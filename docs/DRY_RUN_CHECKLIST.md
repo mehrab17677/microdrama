@@ -3,7 +3,7 @@
 Address: `https://136-116-197-246.sslip.io`  ·  Admin: `mehrab17677@gmail.com`  ·  Dry-run = built-in sample media, nothing paid is called.
 
 ## 1. Gather these files (before you start)
-- [ ] **One face photo**: one clear face, at least 512 px, you may use it (your own is safest). More than one face or no face is rejected.
+- [ ] **Two lead photos**: one clear photo of the **male lead** and one of the **female lead** (one face each, at least 512 px, photos you may use). More than one face or no face is rejected. Supporting characters need no photo: their sheets are made from the story.
 - [ ] **Look pictures**: 3 or more images, or a description of 20+ words.
 - [ ] **Library source**: any `.txt` file (the text does not matter in dry-run).
 - [ ] **Ad demo**: a logo (PNG, at least 300 px) and a real product photo (at least 800 px).
@@ -23,13 +23,14 @@ In Cloud Shell (the `>_` icon):
 ## 3. Run it in the browser
 - [ ] Sign in. The dashboard loads (the first visit can take a minute for the HTTPS certificate).
 - [ ] **Library**: upload the `.txt` with genre "revenge romance". Wait for status *ready*.
-- [ ] **New production → Standard drama**: pick the genre, 3 to 8 keywords, language English, face photo + role label (e.g. "female lead"), look pictures. Start. *(Try leaving one field empty first: every problem should be listed at once.)*
+- [ ] **New production → Standard drama**: pick the genre, 3 to 8 keywords, language English, the male lead photo and the female lead photo, look pictures. Start. *(Try leaving a field empty first: each problem appears under its own field and everything else you entered stays. Pictures show a preview with a ✕ to remove them.)*
 - [ ] **Gate 2, Story**: read the bible and beats. Optionally reject once with a note to see a redo, then approve.
 - [ ] **Gate 3, Look**: check character sheets and voices. Approval must be refused while a voice is missing; then approve.
 - [ ] **Gate 4, Pilot episodes** (3 episodes): play one, mark a range, send feedback such as `Episode 2 (00:05-00:10) the pacing is slow`; confirm it maps to shots; then approve.
+- [ ] **Live view**: the production page shows the overall progress bar, a ring per stage (a spinning ring while a stage works, a tick when done) and the job counts; the left side panel lists the pages in groups.
 - [ ] **Spend bar**: visible on the dashboard and the production page.
 - [ ] **Gate 5, Final cut**: approve. **Delivery** page shows the master and the reports (CSV links work).
-- [ ] **Ad placement drama**: New production → Ad placement. Fill brand, product, description (20+ words), printed text, placement types, upload logo (kind `logo`) and product photo (kind `product`, view `front`). Run the gates.
+- [ ] **Ad placement drama**: New production → Ad placement. Fill brand, product, description (20+ words), printed text, placement types, add the logo and the product photos (each preview has a kind and view menu: logo; product with view front, back, ...). Run the gates.
   - [ ] Final-cut approval is **refused** until each placement is approved on the page; approve them, then approve.
   - [ ] Placement report page and CSV open.
 - [ ] **Team**: register a second email in a private window, approve it as admin, sign in as that person.
@@ -37,7 +38,7 @@ In Cloud Shell (the `>_` icon):
 ## 3b. Optional: the same run with real Claude (needs Anthropic credit)
 See `docs/LIVE_STORY_DEMO.md` (costs about $3 to $8; set a spend limit in the Anthropic console first).
 - [ ] On the server: `bash ~/microdrama/scripts/live_story.sh on` (paste the key at the hidden prompt). Preflight shows `OK anthropic`.
-- [ ] Use a short public-domain story as the library source, and a photo you may share.
+- [ ] Use a short public-domain story as the library source, and photos you may share.
 - [ ] Run a standard drama. The story, characters, shot lists, line tags (and, for ads, the product sheet) are now real; pictures, voices and video are still samples.
 - [ ] When done: `bash ~/microdrama/scripts/live_story.sh off`
 

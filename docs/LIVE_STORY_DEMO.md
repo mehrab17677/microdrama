@@ -7,7 +7,7 @@ For stakeholder demos when only the Anthropic account has credit. The server sta
 |---|---|
 | Library source analysis (pattern cards, plot summary) | **Real** (your uploaded text is sent to Anthropic) |
 | Story Bible, beats, placement plan, scripts, continuity, wardrobe, originality plot check, story check | **Real** |
-| Character trait sheets (reads your reference photo), voice profiles, emotion groups | **Real** (the photo is sent to Anthropic) |
+| Character trait sheets (reads your two lead photos; supporting characters are written from the story), voice profiles, emotion groups | **Real** (the lead photos are sent to Anthropic) |
 | Shot lists (the Lead Director), audio line tags | **Real** (Opus as director, as in the guide; Haiku for tags) |
 | Product sheet (ad placement drama: reads your real product photos and logo) | **Real** (the photos are sent to Anthropic) |
 | Pictures (portraits, packs, plates, keyframes) | Sample picture |
@@ -33,7 +33,7 @@ About **$3 to $8** for one drama through Gate 3 and the pilot shot lists (Opus s
 
 ## Tips for a good demo
 - Upload a **short public-domain story** (under about 5,000 words) to the library, not a full novel: every chunk group is analysed by the real model.
-- Use a **photo you may share** as the character reference: it goes to Anthropic for the trait sheet.
+- Use **lead photos you may share** (male lead and female lead): they go to Anthropic for the trait sheets.
 - Write 3 to 8 specific keywords and a clear aesthetic note: the real model uses them.
 - English only for now (the sample voices and the test setup); Bangla works in the code but is not part of this demo.
 - If a real step fails validation, the pipeline redoes it (at most twice, as designed) and the cost shows in the spend bar.

@@ -56,7 +56,7 @@ Visit the address from Step 5. The first visit can take up to a minute while the
 ## Step 8. Invite stakeholders
 1. Send them the address. They click **Register**, enter their email, name and password.
 2. You (admin) open **Team** in the top bar and click **Approve** next to each person. The app allows 5 people in total including you.
-3. To show the workflow: **New production** → choose a category → fill the brief (a test photo of a face and a few other pictures are needed) → start. In dry-run the story, look, voices and episodes appear within minutes; approve the gates as the dashboard's "Waiting for you" strip prompts. For an ad drama, upload a logo, a real product photo (at least 800 px) and fill the brand details.
+3. To show the workflow: **New production** → choose a category → fill the brief (a photo of the male lead and one of the female lead, and a few look pictures, are needed) → start. In dry-run the story, look, voices and episodes appear within minutes; approve the gates as the dashboard's "Waiting for you" strip prompts. For an ad drama, upload a logo, a real product photo (at least 800 px) and fill the brand details.
 
 ---
 

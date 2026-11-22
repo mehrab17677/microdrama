@@ -1,13 +1,28 @@
 {% extends "base.html" %}{% block title %}{{ s.title }}{% endblock %}
 {% block bodyattrs %} data-production="{{ s.id }}"{% endblock %}
-{% block body %}<h1>{{ s.title or '(untitled)' }}</h1>
+{% block body %}<div id="live" data-status="{{ s.status }}" data-stage="{{ s.current_stage }}" data-running="{{ 1 if progress.running else 0 }}">
+<h1>{{ s.title or '(untitled)' }}</h1>
 <p>{{ s.category }} · {{ s.language }} · owner {{ s.owner_name }}</p>
-<p><strong>Status:</strong> {{ s.status }} · <strong>Stage:</strong> {{ stage_label(s.current_stage) }}{% if s.batch %} · batch {{ s.batch }}{% endif %}</p>
+<p><strong>Status:</strong> {{ s.status|replace('_', ' ') }} · <strong>Stage:</strong> {{ stage_label(s.current_stage) }}{% if s.batch %} · batch {{ s.batch }}{% endif %}</p>
+
+<div class="overall {{ 'running' if progress.running }} {{ s.status if s.status in ('failed', 'done') }}" data-pct="{{ progress.percent }}">
+ <div class="bar" role="progressbar" aria-label="Production progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ progress.percent }}"><div class="fill" style="width:{{ progress.percent }}%"></div></div>
+ <div class="meta"><span>{{ stage_label(s.current_stage) }}{% if progress.running %} · working…{% elif s.status == 'waiting_gate' %} · waiting for your decision{% elif s.status == 'held_budget' %} · paused for budget{% elif s.status == 'failed' %} · stopped{% elif s.status == 'done' %} · finished{% endif %}</span><strong>{{ '%.0f'|format(progress.percent) }}%</strong></div>
+</div>
+
+{% if progress.failure %}<div class="err"><strong>This production stopped.</strong> The last failed step was <code>{{ progress.failure.kind }}</code>.
+<details open><summary>Why</summary><p style="margin:.3rem 0">{{ progress.failure.error or 'No reason was recorded.' }}</p></details>
+<p style="margin:.3rem 0">Your inputs are not lost: start a new production and re-enter them. If the reason is about names from reference material or word counts, a new run usually passes, because the writer is now told the rules and is asked to fix a rejected draft once.</p></div>{% endif %}
 
 <h2>Stages</h2>
-<ol id="tracker" style="display:flex;flex-wrap:wrap;gap:.4rem;list-style:none;padding:0">{% for st in tracker %}
-<li data-state="{{ st.state }}" style="padding:.25rem .6rem;border-radius:14px;border:1px solid #ccc;font-size:.85rem;
-{% if st.state == 'done' %}background:#e9f7ee;border-color:#b3dfc0{% elif st.state == 'running' %}background:#e6efff;border-color:#9db7f5;font-weight:700{% elif st.state == 'waiting' %}background:#fff8e6;border-color:#f0d58c;font-weight:700{% elif st.state in ('failed', 'discarded') %}background:#fdecec;border-color:#f3b4b4{% else %}color:#888{% endif %}">{{ st.label }} · {{ st.state }}</li>{% endfor %}</ol>
+<ol id="tracker" class="stages">{% for st in progress.stages %}
+<li class="stg stg-{{ 'pending' if st.state == 'not started' else st.state }}" data-state="{{ st.state }}">
+ <span class="ring" aria-hidden="true"><svg viewBox="0 0 36 36"><circle class="track" cx="18" cy="18" r="15"/><circle class="arc" cx="18" cy="18" r="15"/></svg>
+ {% if st.state == 'done' %}<i class="ic">&#10003;</i>{% elif st.state == 'waiting' %}<i class="ic">&#10074;&#10074;</i>{% elif st.state in ('failed', 'discarded') %}<i class="ic">&#10005;</i>{% elif st.state == 'not started' %}<i class="ic" style="color:#aaa;font-weight:500">{{ loop.index }}</i>{% endif %}</span>
+ <span class="lb">{{ st.label }}</span>
+ <small>{% if st.state == 'not started' %}not started{% elif st.total %}{{ st.done }}/{{ st.total }} jobs{% if st.failed %} · {{ st.failed }} failed{% endif %}{% elif st.state == 'running' %}starting…{% elif st.state == 'waiting' %}your turn{% else %}{{ st.state }}{% endif %}</small>
+ <span class="sr-only" style="position:absolute;left:-9999px">{{ st.state }}</span>
+</li>{% endfor %}</ol>
 
 {% if spend.batches %}<h2>Spend</h2>
 {% for b in spend.batches %}<div class="spend" data-batch="{{ b.batch }}"><p style="margin:.2rem 0">{{ b.batch|capitalize }} video budget ${{ '%.2f'|format(b.budget) }}{% if b.extra %} (+${{ '%.2f'|format(b.extra) }} approved){% endif %}: spent ${{ '%.2f'|format(b.spent) }} ({{ '%.0f'|format(b.percent) }}%)</p>
@@ -41,4 +56,5 @@
 <h2>Activity</h2>
 <ul id="activity" style="list-style:none;padding:0;font-size:.9rem">{% for a in activity %}<li><small>{{ a.at.strftime('%d %b %H:%M:%S') }}</small> · {{ a.what|replace('_', ' ') }}{% if a.extra and a.source == 'job' %} <span style="color:#b00">{{ a.extra }}</span>{% endif %}</li>
 {% else %}<li>Nothing yet.</li>{% endfor %}</ul>
+</div>
 {% endblock %}

@@ -8,3 +8,4 @@ from app import overview  # noqa: E402
 
 templates.env.globals["unread_alerts"] = overview.unread_alerts
 templates.env.globals["stage_label"] = lambda key: overview.STAGE_LABELS.get(key, key)
+templates.env.globals["nav_productions"] = overview.recent_productions
