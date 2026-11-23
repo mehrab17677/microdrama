@@ -2,7 +2,7 @@
 
 Pipeline that turns a story brief into a series of 75 to 90 second vertical micro-dramas (Bangla or English): story, look, voices, shots, video, captions, QA, human gates,
 delivery. Ordinary dramas and **ad placement dramas** (a real product appears inside generated scenes). Python 3.12, FastAPI, LangGraph, Postgres with pgvector, Cloudflare R2,
-Anthropic (language models), fal (images, embeddings, video) and ElevenLabs (voices, music). OpenAI is optional.
+Anthropic (language models), Higgsfield (Kling 4.0, Kling 3.0 Pro and Seedance 2.0 video; see `docs/HIGGSFIELD.md`), fal (images, embeddings, the talking-head avatar and lip-sync, and the video failover) and ElevenLabs (voices, music). OpenAI is optional.
 
 ## How it runs
 One image, five process types, one Postgres, one R2 bucket (`docker-compose.yml`):

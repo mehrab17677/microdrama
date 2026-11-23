@@ -22,8 +22,10 @@ StatusFn = Callable[[dict], tuple[str, object]]
 
 
 def default_status(job: dict) -> tuple[str, object]:
-    from app.vendors import falmedia  # dry-run: completes with a fixture payload
+    from app.vendors import falmedia, higgsfield  # dry-run: completes with a fixture payload
 
+    if job.get("vendor") == "higgsfield":
+        return higgsfield.poll_status(job)
     return falmedia.poll_status(job)
 
 

@@ -4,7 +4,8 @@
 
 Steps (estimated cost): openai_text (~$0), embeddings (~$0), image (2 images), seedance (4 s silent
 1080p, ~$0.23), avatar (3 s audio, ~$0.35), lipsync (4 s clip, ~$0.07), latentsync (4 s clip, $0.20),
-brandshot (4 s 720p Seedance 2.0 with a real product photo, ~$1.20; needs SMOKE_PRODUCT_PHOTO), speech/music (ElevenLabs, paid plan).
+brandshot (4 s 720p Seedance 2.0 with a real product photo, ~$1.20; needs SMOKE_PRODUCT_PHOTO), higgsfield_estimates (free), higgsfield_clips
+(four real Higgsfield clips, ~$1.75), speech/music (ElevenLabs, paid plan).
 It records resolution, frame rate and the path that worked, for docs/VENDOR_NOTES.md.
 """
 from __future__ import annotations
@@ -23,7 +24,8 @@ sys.path.insert(0, str(ROOT))
 from pydantic import BaseModel  # noqa: E402
 
 from app.config import dry_run  # noqa: E402
-from app.vendors import eleven, falmedia, images, llm  # noqa: E402
+from app.media import requests as media_requests  # noqa: E402
+from app.vendors import eleven, falmedia, higgsfield, images, llm  # noqa: E402
 
 RESULTS: dict[str, dict] = {}
 
@@ -185,6 +187,51 @@ def step_brandshot(out: Path) -> None:
     RESULTS["brandshot"] = {"request_id": rid, "probe": probe(path), "estimated_cost": round(4 * 0.3024, 4), "note": "check the label and logo by eye; record whether moderation accepted the real logo"}
 
 
+def wait_for_higgsfield(request_id: str, timeout_s: int = 900) -> dict:
+    t0 = time.time()
+    while time.time() - t0 < timeout_s:
+        state, payload = higgsfield.poll_status({"vendor_request_id": request_id})
+        if state == "done":
+            return payload
+        if state == "error":
+            raise RuntimeError(f"Higgsfield error: {payload}")
+        time.sleep(5)
+    raise TimeoutError(request_id)
+
+
+def _hf_shot(lines: int, seconds: int) -> dict:
+    return {"id": "smoke", "keyframe_r2_key": "smoke", "render_duration": seconds, "attempts": 0, "line_count": lines}
+
+
+def step_higgsfield_estimates(out: Path) -> None:
+    """Free: Higgsfield's own estimate for every request shape the app sends (nothing is generated). Compare with price_book.video.hf_*."""
+    frame = higgsfield.upload(_first_frame(out).read_bytes(), "image/png")
+    rows = {}
+    for tier, lines, quality in (("A", 0, "final"), ("A", 0, "draft"), ("B2", 1, "final"), ("B2", 1, "draft"), ("C", 0, "final"), ("S", 1, "final"), ("S", 1, "draft")):
+        req = media_requests.video_request(tier, _hf_shot(lines, 5), "She turns her head slowly.", True, vendor="higgsfield", quality=quality)
+        args = {("image_url" if k == "image_key" else k): (frame if k == "image_key" else v) for k, v in req["arguments"].items()}
+        rows[f"{tier}/{quality}/lines={lines}"] = {"endpoint": req["endpoint"], "estimate": higgsfield.estimate(req["endpoint"], args)}
+    RESULTS["higgsfield_estimates"] = rows
+
+
+def step_higgsfield_clips(out: Path) -> None:
+    """Four real clips through the same request builders the app uses (about $1.75 in all): Kling 4.0 tier A 1080p 3 s, Kling 3.0 Pro 1080p 3 s silent,
+    Kling 3.0 Standard 720p 3 s (the draft), Seedance 2.0 720p 4 s. Records size, frame rate and audio. Stop and ask if a clip is under 1080 px wide at full quality
+    or not 9:16 (guide section 14); the drafts are expected to be 720 wide."""
+    frame = higgsfield.upload(_first_frame(out).read_bytes(), "image/png")
+    plan = [("kling4_1080p", "A", 0, 3, "final"), ("kling3pro_1080p", "B2", 1, 3, "final"), ("kling3std_720p_draft", "B2", 1, 3, "draft"), ("seedance_720p_draft", "S", 1, 4, "draft")]
+    for name, tier, lines, seconds, quality in plan:
+        req = media_requests.video_request(tier, _hf_shot(lines, seconds), "She turns her head slowly and looks at the camera.", True, vendor="higgsfield", quality=quality)
+        args = {("image_url" if k == "image_key" else k): (frame if k == "image_key" else v) for k, v in req["arguments"].items()}
+        rid = higgsfield.submit(req["endpoint"], args)
+        payload = wait_for_higgsfield(rid)
+        path = falmedia.download(falmedia.video_url(payload), out / f"hf_{name}.mp4")
+        from app.media import costs
+
+        RESULTS.setdefault("higgsfield_clips", {})[name] = {"request_id": rid, "endpoint": req["endpoint"], "probe": probe(path),
+                                                            "estimated_cost": costs.clip_price(req["model_key"], duration=seconds, audio=(lines == 0), quality=quality, vendor="higgsfield")}
+
+
 def step_latentsync(out: Path) -> None:
     video_url = RESULTS.get("seedance", {}).get("video_url")
     if not video_url:
@@ -196,7 +243,7 @@ def step_latentsync(out: Path) -> None:
     RESULTS["latentsync"] = {"request_id": rid, "probe": probe(path), "estimated_cost": falmedia.estimate_cost("latentsync", duration=4)}
 
 
-STEPS = {f.__name__[5:]: f for f in (step_openai_text, step_embeddings, step_image, step_nanobanana, step_kling, step_seedance, step_avatar, step_lipsync, step_latentsync, step_brandshot, step_speech, step_music)}
+STEPS = {f.__name__[5:]: f for f in (step_openai_text, step_embeddings, step_image, step_nanobanana, step_kling, step_seedance, step_avatar, step_lipsync, step_latentsync, step_brandshot, step_higgsfield_estimates, step_higgsfield_clips, step_speech, step_music)}
 
 
 def main() -> int:

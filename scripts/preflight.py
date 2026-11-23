@@ -265,6 +265,31 @@ def check_fal() -> Result:
     return OK, f"key accepted (HTTP {resp.status_code} for an unknown request id)"
 
 
+def check_higgsfield() -> Result:
+    """Higgsfield renders the video models set to it in config video_vendors. The key check is the free estimate call (nothing is generated).
+    The API does not show the balance: an empty balance is found by the smoke test (scripts/smoke_vendors.py --steps higgsfield), and at run time the clip falls back to fal."""
+    import httpx
+
+    from app.media import providers
+    from app.vendors import higgsfield
+
+    try:
+        used = any(v == providers.HIGGSFIELD for v in (providers.setting("video_vendors") or {}).values())
+    except Exception:  # noqa: BLE001 - no config table yet: the config check reports it
+        used = True
+    if not used:
+        return SKIP, "not used: every video model runs on fal (config video_vendors)"
+    if not os.environ.get("HIGGSFIELD_API_KEY"):
+        return FAIL, "HIGGSFIELD_API_KEY is not set (KEY_ID:KEY_SECRET from console.higgsfield.ai; any placeholder when a proxy injects the key)"
+    resp = httpx.post(f"{higgsfield.BASE}/estimate/{higgsfield.KLING_V3_PRO}", json={"image_url": "https://example.com/preflight.png", "prompt": "preflight"},
+                      headers=higgsfield._headers(), timeout=30)
+    if resp.status_code in (401, 403):
+        return FAIL, f"Higgsfield rejected the key (HTTP {resp.status_code})"
+    if resp.status_code >= 400:
+        return FAIL, f"Higgsfield estimate call failed (HTTP {resp.status_code}): {resp.text[:150]}"
+    return OK, "key accepted (free estimate call); the balance is checked by the smoke test"
+
+
 CORE: list[tuple[str, Callable[[], Result]]] = [
     ("database", check_database),
     ("config", check_config_seeded),
@@ -279,6 +304,7 @@ VENDOR: list[tuple[str, Callable[[], Result]]] = [
     ("embeddings", check_embeddings),
     ("elevenlabs", check_elevenlabs),
     ("fal", check_fal),
+    ("higgsfield", check_higgsfield),
 ]
 
 

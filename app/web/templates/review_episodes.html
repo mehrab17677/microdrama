@@ -5,8 +5,12 @@
 
 <h2>Spend</h2>
 <p>Total cost so far ${{ '%.2f'|format(spend.total_cost) }}; video ${{ '%.2f'|format(spend.video_spent) }}.</p>
+{% if projection and projection.draft %}<p id="draft-note" style="border-left:4px solid #b58900;padding:.4rem .8rem;background:rgba(181,137,0,.08)"><strong>This pilot is a lower-quality draft.</strong>
+The {{ projection.draft.clips }} video clip(s) below were rendered at 720p to keep the approval cheap (${{ '%.2f'|format(projection.draft.draft_cost) }}); the picture, casting, acting, voices and story are what to judge here, not sharpness.
+Approving the pilot renders those clips again at full quality, from the same keyframes, prompts and voices (about ${{ '%.2f'|format(projection.draft.upgrade_cost) }} with lip-sync), and then builds the remaining episodes. You review the full-quality cut at the final gate.
+Brand placement shots and talking-head avatar shots are already at full quality.</p>{% endif %}
 {% if projection %}<p id="projection"><strong>Projection for the full build:</strong> the pilot used ${{ '%.2f'|format(projection.pilot_spend) }} of video for {{ '%.0f'|format(projection.pilot_seconds) }} s
-(${{ '%.3f'|format(projection.per_second) }} per second). {{ projection.remaining_episodes }} more episodes ({{ '%.0f'|format(projection.remaining_seconds) }} s) would add about <strong>${{ '%.2f'|format(projection.projected) }}</strong>.</p>{% endif %}
+(${{ '%.3f'|format(projection.per_second) }} per second{% if projection.draft %} at full quality{% endif %}). {{ projection.remaining_episodes }} more episodes ({{ '%.0f'|format(projection.remaining_seconds) }} s) would add about <strong>${{ '%.2f'|format(projection.projected) }}</strong>.</p>{% endif %}
 
 {% for ep in episodes %}<section class="episode" data-episode="{{ ep.e.number }}" style="border-top:1px solid #ddd;margin-top:1.5rem">
 <h2>Episode {{ ep.e.number }} <small>cut {{ ep.e.cut_version }} · {{ '%.1f'|format(ep.e.runtime_seconds|float) }} s · {{ ep.e.status|replace('_', ' ') }}</small></h2>

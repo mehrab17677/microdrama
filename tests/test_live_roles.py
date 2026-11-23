@@ -112,5 +112,5 @@ def test_the_secret_script_only_takes_known_names_and_never_echoes_the_value():
     path = Path(__file__).resolve().parent.parent / "scripts" / "set_secret.sh"
     assert subprocess.run(["bash", "-n", str(path)]).returncode == 0
     text = path.read_text()
-    assert "read -rsp" in text and "chmod 600 .env" in text and "FAL_KEY|ANTHROPIC_API_KEY|ELEVENLABS_API_KEY|OPENAI_API_KEY" in text
+    assert "read -rsp" in text and "chmod 600 .env" in text and "FAL_KEY|HIGGSFIELD_API_KEY|ANTHROPIC_API_KEY|ELEVENLABS_API_KEY|OPENAI_API_KEY" in text
     assert subprocess.run(["bash", str(path), "NOT_A_KEY"], capture_output=True, text=True).returncode == 1

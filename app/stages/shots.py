@@ -19,7 +19,7 @@ from app.vendors import images
 
 SPEAKING_TYPES = ("speaking_closeup", "speaking_wider", "hero")
 SHOT_TYPES = ("non_speaking", "speaking_closeup", "speaking_wider", "hero", "static_insert")
-LIKELY_MODEL_KEY = "kling_v3_pro"   # tiers A, B2 and C, the most common ones, decide which setups to leave out
+LIKELY_MODEL_KEYS = ["kling_v4", "kling_v3_pro"]   # tier A (Kling 4.0) and tiers B2 and C (Kling V3 Pro), the most common ones, decide which setups to leave out
 SETUP_LIMIT = 30
 
 SHOT_INSTRUCTIONS = """You are the Lead Director of a vertical micro-drama (9:16, 75 to 90 seconds per episode).
@@ -65,13 +65,13 @@ def outfit_codes(sid) -> dict[str, set[str]]:
 
 
 def retrieve_setups(sid, query: str) -> tuple[list[dict], dict | None]:
-    """The 30 camera setups nearest to the genre and scene text, leaving out any that avoid the likely model."""
+    """The 30 camera setups nearest to the genre and scene text, leaving out any that avoid one of the likely models."""
     s = common.get_series(sid)
     (vec,), usage = images.embed([query])
     rows = db.fetch_all(
         "select name, shot_size, angle, movement, composition, best_for from camera_setups"
-        " where embedding is not null and not (%s = any(avoid_models)) and (genre_id is null or genre_id = %s)"
-        " order by embedding <=> %s::vector limit %s", (LIKELY_MODEL_KEY, s["genre_id"], db.to_vector(vec), SETUP_LIMIT))
+        " where embedding is not null and not (avoid_models && %s::text[]) and (genre_id is null or genre_id = %s)"
+        " order by embedding <=> %s::vector limit %s", (LIKELY_MODEL_KEYS, s["genre_id"], db.to_vector(vec), SETUP_LIMIT))
     return rows, usage
 
 

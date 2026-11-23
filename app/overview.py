@@ -103,8 +103,27 @@ def spend(series_id) -> dict:
     return {"batches": batches, "total_cost": _f(total), "video_spent": sum(b["spent"] for b in batches)}
 
 
+def draft_pilot(series_id) -> dict | None:
+    """When the pilot was rendered as lower-quality drafts: how many clips, what they cost at draft prices, and what the same clips and their lip-sync cost at full quality
+    (the price of rendering the pilot again after the approval). None when nothing is a draft."""
+    from app.media import costs
+
+    rows = db.fetch_all(
+        "select s.tier, s.fallback_used, s.spec, s.planned_duration, s.render_duration, cardinality(s.line_ids) line_count from shots s join episodes e on e.id = s.episode_id"
+        " where s.series_id = %s and e.batch = 'pilot' and s.spec ->> 'rendered_quality' = 'draft'", (series_id,))
+    if not rows:
+        return None
+    draft = final = 0.0
+    for r in rows:
+        args = (r["tier"], float(r["planned_duration"] or 0), r["render_duration"] or 0, r["line_count"], r["fallback_used"])
+        draft += costs.shot_clip_cost(*args, False, "draft")
+        final += costs.shot_clip_cost(*args, False, "final") + costs.shot_lipsync_cost(r["tier"], r["line_count"], r["render_duration"] or 0, r["fallback_used"])
+    return {"clips": len(rows), "draft_cost": round(draft, 2), "upgrade_cost": round(final, 2)}
+
+
 def projection(series_id) -> dict | None:
-    """Gate 4: (video spend on the pilot / pilot seconds) x planned seconds of the remaining episodes."""
+    """Gate 4: (video spend on the pilot / pilot seconds) x planned seconds of the remaining episodes. When the pilot was a lower-quality draft the pilot's spend is first
+    raised to what it would have cost at full quality, so the projection is the real price of the full build; `draft` carries the cost of rendering the pilot again."""
     pilot = db.fetch_one("select spent_usd from budgets where series_id = %s and batch = 'pilot'", (series_id,))
     if pilot is None:
         return None
@@ -113,9 +132,12 @@ def projection(series_id) -> dict | None:
         return None
     remaining = db.fetch_all("select runtime_seconds from episodes where series_id = %s and batch = 'full'", (series_id,))
     seconds = sum(_f(r["runtime_seconds"]) or AVERAGE_EPISODE_SECONDS for r in remaining)
-    per_second = _f(pilot["spent_usd"]) / pilot_seconds
-    return {"pilot_spend": _f(pilot["spent_usd"]), "pilot_seconds": pilot_seconds, "per_second": per_second, "remaining_episodes": len(remaining), "remaining_seconds": seconds,
-            "projected": per_second * seconds}
+    draft = draft_pilot(series_id)
+    spend = _f(pilot["spent_usd"])
+    at_full_quality = spend - draft["draft_cost"] + draft["upgrade_cost"] if draft else spend
+    per_second = at_full_quality / pilot_seconds
+    return {"pilot_spend": spend, "pilot_seconds": pilot_seconds, "per_second": per_second, "remaining_episodes": len(remaining), "remaining_seconds": seconds,
+            "projected": per_second * seconds, "draft": draft}
 
 
 def episode_grid(series_id) -> list[dict]:

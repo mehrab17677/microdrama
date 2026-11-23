@@ -6,10 +6,11 @@ TIER_BY_TYPE = {
     "hero": "C",
     "static_insert": "INSERT",
 }
-# Seedance 1.5 Pro (the old model for tiers A and B2) was removed from fal on 11 Nov 2026. Tiers A, B2 and C now all use Kling V3 Pro (audio on for a shot
-# with no speech, off for a shot that is lip-synced afterwards); method "S", Seedance 2.0 image-to-video at 1080p, is the fallback after two failed attempts.
+# Seedance 1.5 Pro (the old model for tiers A and B2) was removed from fal on 11 Nov 2026. Tier A (no speech) now uses Kling 4.0; tiers B2 and C use Kling V3 Pro
+# (sound off for a shot that is lip-synced afterwards, on for one with no speech); method "S", Seedance 2.0 image-to-video at 1080p, is the fallback after two
+# failed attempts. These are MODEL keys; which vendor runs them (Higgsfield or fal) is the config row video_vendors (app/media/providers.py).
 MODEL_KEY_BY_TIER = {
-    "A": "kling_v3_pro",
+    "A": "kling_v4",
     "B1": "kling_avatar_v2_pro",
     "B2": "kling_v3_pro",
     "C": "kling_v3_pro",

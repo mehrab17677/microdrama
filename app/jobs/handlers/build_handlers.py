@@ -3,6 +3,7 @@ clips and lip-sync, set inserts and the compile. Roles: director (shot list), co
 Nothing is stored until the checks pass; a failed check raises PermanentError listing every problem."""
 from __future__ import annotations
 
+import logging
 import os
 import tempfile
 from pathlib import Path
@@ -14,14 +15,16 @@ from app import db
 from app.config import dry_run, get_config
 from app.graphs import common, work
 from app.jobs.errors import PermanentError
-from app.media import compile as media_compile, ffmpeg, requests as media_requests, subtitles
+from app.media import compile as media_compile, costs as media_costs, ffmpeg, providers, requests as media_requests, subtitles
 from app.media.routing import method_tier, needs_lipsync, shot_model_key
 from app.models.shots import ShotList, ShotRequest
 from app.qa import face
 from app import placement
 from app.stages import brand as brand_stage, look, shots as shots_stage, story
 from app.stages.ingest import _cost_rows
-from app.vendors import eleven, falmedia, images, llm, storage
+from app.vendors import eleven, falmedia, higgsfield, images, llm, storage
+
+log = logging.getLogger(__name__)
 
 KINDS = ["llm_shot_list", "tts_line", "music_episode", "llm_shot_request", "image_keyframe", "ffmpeg_insert", "ffmpeg_compile"]
 
@@ -354,26 +357,48 @@ class VideoClip:
         shot = _shot(job)
         if method_tier(shot["tier"], shot["fallback_used"], shot["line_count"]) == "B1":   # the avatar endpoint takes the audio: its length is the planned length
             build_and_store_shot_audio(sid, shot, float(shot["planned_duration"]))
+        if job.get("vendor") == "higgsfield":
+            try:
+                return higgsfield.submit(job["endpoint"], media_requests.resolve_keys(req["arguments"]), idempotency_key=str(job["id"]))
+            except (higgsfield.OutOfCredit, higgsfield.Unavailable) as exc:
+                fo = req.get("failover")
+                if not fo or not providers.failover_enabled():
+                    raise
+                log.warning("Higgsfield refused clip job %s (%s): rendering it on fal instead", job["id"], exc)
+                db.execute("update jobs set vendor = 'fal', endpoint = %s, request = request || %s where id = %s",
+                           (fo["endpoint"], Jsonb({"vendor": "fal", "endpoint": fo["endpoint"], "arguments": fo["arguments"], "model_key": fo["model_key"],
+                                                  "failed_over": str(exc)[:300]}), job["id"]))
+                return falmedia.submit(fo["endpoint"], media_requests.resolve_keys(fo["arguments"]))
         return falmedia.submit(job["endpoint"], media_requests.resolve_keys(req["arguments"]))
 
     @staticmethod
     def finalize(job):
         shot = _shot(job)
-        attempt = job["request"]["attempt"]
+        req = job["request"]
+        attempt = req["attempt"]
+        quality = req.get("quality", "final")
+        vendor = req.get("vendor") or job.get("vendor") or "fal"
         with tempfile.TemporaryDirectory() as tmp:
             local = falmedia.download(falmedia.video_url(job["result"]), Path(tmp) / "clip.mp4")
             info = ffmpeg.probe(local)
-            key = f"series/{job['series_id']}/episodes/{shot['episode_number']:02d}/shots/{shot['idx']}/raw_a{attempt}.mp4"
+            suffix = "_draft" if quality == "draft" else ""    # a draft and the final render of the same attempt never share a file (the lip-sync job key contains it)
+            key = f"series/{job['series_id']}/episodes/{shot['episode_number']:02d}/shots/{shot['idx']}/raw_a{attempt}{suffix}.mp4"
             storage.put_file(key, local)
+        marker = Jsonb({"rendered_quality": quality})
         with db.transaction() as conn:
-            if (info["width"], info["height"]) != (1080, 1920):   # not a failure: the compile scales and pads
+            if (info["width"], info["height"]) != (1080, 1920) and quality == "final":   # not a failure: the compile scales and pads (a draft is expected to be smaller)
                 conn.execute("insert into qa_results (series_id, episode_id, shot_id, qa_round, check_name, passed, detail) values (%s, %s, %s, 'precheck', 'resolution', false, %s)",
                              (job["series_id"], shot["episode_id"], shot["id"], Jsonb(info)))
             if needs_lipsync(shot["tier"], shot["line_count"], shot["fallback_used"]):
-                conn.execute("update shots set raw_clip_r2_key = %s, status = 'rendered' where id = %s", (key, shot["id"]))
+                conn.execute("update shots set raw_clip_r2_key = %s, status = 'rendered', spec = spec || %s where id = %s", (key, marker, shot["id"]))
             else:
-                conn.execute("update shots set raw_clip_r2_key = %s, final_clip_r2_key = %s, status = 'ready' where id = %s", (key, key, shot["id"]))
-        return {"probe": info}
+                conn.execute("update shots set raw_clip_r2_key = %s, final_clip_r2_key = %s, status = 'ready', spec = spec || %s where id = %s", (key, key, marker, shot["id"]))
+        model = req.get("model_key") or "kling_v3_pro"
+        seconds = float(shot["planned_duration"]) if model == "kling_avatar_v2_pro" else float(req.get("seconds") or shot["render_duration"])
+        cost = media_costs.clip_price(model, duration=seconds, audio=bool(req.get("audio")), quality=quality, vendor=vendor) if model != "kling_avatar_v2_pro" \
+            else falmedia.estimate_cost(model, duration=seconds)
+        return {"probe": info, "vendor": vendor, "quality": quality, "actual_cost": cost,
+                "cost_log": [{"vendor": vendor, "model": model + ("_draft" if quality == "draft" else ""), "units": seconds, "unit_name": "second", "cost_usd": cost}]}
 
 
 class Lipsync:

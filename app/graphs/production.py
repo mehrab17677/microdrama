@@ -403,7 +403,28 @@ def start_batch(state):
     return {}
 
 
+def upgrade_draft_pilot(sid) -> int:
+    """After the pilot approval (Gate 4): every pilot clip that was rendered as a lower-quality draft is rendered again at full quality from the same approved
+    keyframe, prompt, voice-over and camera. The episode joins the full batch (as a reworked episode does), so the clip, lip-sync, sound, compile and QA steps run
+    for it again and the final cut is checked at Gate 5. Brand shots, inserts and anything already final are left alone. Returns the number of shots reset."""
+    reset = 0
+    with db.transaction() as conn:
+        for e in conn.execute(
+            "select e.id, e.number from episodes e where e.series_id = %s and e.batch = 'pilot' and exists"
+            " (select 1 from shots s where s.episode_id = e.id and s.spec ->> 'rendered_quality' = 'draft')", (sid,)).fetchall():
+            n = conn.execute(
+                "update shots set status = 'keyframe_ready', raw_clip_r2_key = null, final_clip_r2_key = null, sync_attempts = 0, spec = spec || '{\"quality\": \"final\"}'::jsonb"
+                " where episode_id = %s and tier <> 'INSERT' and spec ->> 'rendered_quality' = 'draft'", (e["id"],)).rowcount
+            conn.execute("update episodes set batch = 'full', status = 'rendered' where id = %s", (e["id"],))
+            audit.log(conn, None, f"note:draft_upgrade:{e['number']}", sid, {"text": f"{n} pilot clip(s) are rendered again at full quality after the approval"})
+            reset += n
+    return reset
+
+
 def to_full_batch(state):
+    sid, _, _ = _ids(state)
+    if not _dead(sid):
+        upgrade_draft_pilot(sid)
     return {"batch": "full", "round": 0}
 
 

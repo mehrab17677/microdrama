@@ -44,9 +44,9 @@ def cost_report_csv(series_id) -> str:
     for r in db.fetch_all("select j.episode_id, e.number, sum(c.cost_usd) cost from cost_log c join jobs j on j.id = c.job_id left join episodes e on e.id = j.episode_id where c.series_id = %s group by 1, 2 order by 2 nulls first", (series_id,)):
         w.writerow(["by_episode", "", f"episode {r['number']}" if r["number"] else "series-wide", "", "", f"{float(r['cost']):.4f}"])
     for b in db.fetch_all("select * from budgets where series_id = %s order by batch", (series_id,)):
-        w.writerow(["video_budget", "fal", b["batch"], "usd", f"budget {float(b['budget_usd']):.2f} + approved {float(b['approved_extra_usd']):.2f}", f"spent {float(b['spent_usd']):.4f}"])
+        w.writerow(["video_budget", "higgsfield+fal", b["batch"], "usd", f"budget {float(b['budget_usd']):.2f} + approved {float(b['approved_extra_usd']):.2f}", f"spent {float(b['spent_usd']):.4f}"])
     w.writerow(["total", "", "", "", "", f"{total:.4f}"])
-    w.writerow(["note", "", "", "", "", "video spend is an estimate until it is compared with the fal invoice"])
+    w.writerow(["note", "", "", "", "", "video spend is an estimate until it is compared with the Higgsfield and fal invoices"])
     return buf.getvalue()
 
 

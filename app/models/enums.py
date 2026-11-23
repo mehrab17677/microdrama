@@ -86,6 +86,7 @@ class Vendor(StrEnum):
     openai = "openai"
     elevenlabs = "elevenlabs"
     fal = "fal"
+    higgsfield = "higgsfield"
     local = "local"
 
 

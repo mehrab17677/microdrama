@@ -4,7 +4,7 @@ Stop and ask the owner if: eleven_v3 does not speak Bengali; both GPT Image size
 any single step would cost more than $5 outside the pilots below.
 
 ## Before any spending
-- Credit: Anthropic and fal (images, embeddings, video); ElevenLabs on a **paid plan**. OpenAI is not needed with the default settings.
+- Credit: Anthropic; fal (images, embeddings, avatar, lip-sync, video failover); Higgsfield (Kling 4.0, Kling 3.0 Pro, Seedance 2.0 video; $25 or more added in the last 28 days gives 10 concurrent clips); ElevenLabs on a **paid plan**. OpenAI is not needed with the default settings.
 - `DRY_RUN=0`, all keys set, `docker compose run --rm web python scripts/preflight.py` passes. Unset `IMAGE_BACKEND`, `EMBEDDING_BACKEND`, `VOICE_BACKEND`, `SKIP_PACK_KINDS`.
 - Re-embed the library (`python -m scripts.reembed_library` if you ingested sources with the local embedding model: the vectors from the test model are not comparable with the real ones) and redo any voice made by the local voice backend.
 - Seed the new prices and config: `python scripts/seed_config.py`.
@@ -25,7 +25,7 @@ One Bangla line through tier B1 (avatar) and through tier B2 (a silent Kling V3 
 
 ## 5. Three-episode Bangla pilot (about $60)
 Start a production, approve the gates, stop at Gate 4. Record: first-pass yield per tier, lip-sync quality for B1 and B2 separately, generated seconds per used second, cost per image, the tier mix, how often the budget prompt appeared, the projection against the real spend.
-Compare the app's video spend with the fal invoice (whether fal bills failed requests is unverified).
+Compare the app's video spend with the Higgsfield and fal invoices (whether fal bills failed requests is unverified; Higgsfield does not charge failed or moderated clips). The pilot is a 720p draft by default (`pilot_quality`): the approval at Gate 4 renders it again at full quality, so budget for both passes (docs/HIGGSFIELD.md).
 
 ## 6. Calibrate before a full build
 Set `qa_thresholds` from the pilot: `face_match_min` (different generated people can score 0.35), `pack_match_min`, `likeness_max`, `hook_max_seconds`. Check the Bangla captions on the real episodes. Decide `pilot_rework_rounds`.

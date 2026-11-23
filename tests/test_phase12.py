@@ -61,7 +61,7 @@ def test_a_finished_production_has_a_master_marketing_copy_and_a_delivery_page(f
     cost = c.get(f"/productions/{sid}/delivery/cost.csv")
     assert cost.status_code == 200 and cost.headers["content-disposition"].startswith("attachment") and cost.text.splitlines()[0] == "section,vendor,model,unit,units,cost_usd"
     total = float(db.fetch_one("select coalesce(sum(cost_usd), 0) t from cost_log where series_id = %s", (sid,))["t"])
-    assert f"total,,,,,{total:.4f}" in cost.text and "video_budget,fal,pilot" in cost.text and "by_episode" in cost.text and "compare it with the fal invoice" in cost.text.replace("until it is compared with the fal invoice", "compare it with the fal invoice")
+    assert f"total,,,,,{total:.4f}" in cost.text and "video_budget,higgsfield+fal,pilot" in cost.text and "by_episode" in cost.text and "compared with the Higgsfield and fal invoices" in cost.text
     qa = c.get(f"/productions/{sid}/delivery/qa.csv")
     assert qa.status_code == 200 and qa.text.splitlines()[0] == "episode,shot,round,check,passed,category,score,note" and "no lip-sync scorer: judged by people at the gates" in qa.text
     assert "runtime" in qa.text and "face_match" in qa.text

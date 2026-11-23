@@ -49,11 +49,23 @@ CONFIG_DEFAULTS: dict[str, tuple[object, str]] = {
                 "latentsync": {"flat": 0.20, "flat_up_to_s": 40, "per_s_over": 0.005},
                 "seedance_2_0_ref": {"per_s": {"720p": 0.3024, "1080p": 0.682}, "resolution": "1080p"},
                 "seedance_2_0_i2v": {"per_s": {"720p": 0.3024, "1080p": 0.682}, "resolution": "1080p"},   # fallback for tiers A, B2, C; the 1080p price is the family rate (fal shows 720p on the page): UNVERIFIED
+                # Higgsfield (self-serve list prices per output second, from its estimate endpoint, 23 Nov 2026). hf_kling_v3_pro with sound is the pricing page's figure: UNVERIFIED by an invoice.
+                "hf_kling_v4": {"per_s": {"720p": 0.1257, "1080p": 0.1879}, "resolution": "1080p", "draft_resolution": "720p"},
+                "hf_kling_v3_pro": {"per_s_audio": 0.1443, "per_s_silent": 0.0962},     # 1080p
+                "hf_kling_v3_std": {"per_s_audio": 0.1071, "per_s_silent": 0.0714},     # 720p, the pilot draft
+                "hf_seedance_2_0_i2v": {"per_s": {"480p": 0.0804, "720p": 0.1735, "1080p": 0.4293}, "resolution": "1080p", "draft_resolution": "720p"},
+                "hf_seedance_2_0_ref": {"per_s": {"480p": 0.0804, "720p": 0.1735, "1080p": 0.4293}, "resolution": "1080p", "draft_resolution": "1080p"},   # no input video; brand shots are never drafts
             },
         },
         "Prices used for estimates and cost_log (guide 6.1-6.4, with verified changes)",
     ),
-    "vendor_concurrency": ({"fal": 8, "elevenlabs": 4, "openai": 4, "anthropic": 6, "local": 2}, "Max running+submitted jobs per vendor"),
+    "vendor_concurrency": ({"fal": 8, "higgsfield": 6, "elevenlabs": 4, "openai": 4, "anthropic": 6, "local": 2},
+                           "Max running+submitted jobs per vendor. Higgsfield queues extra requests itself; its own limit is 2 for a new account, 10 once $25 of credit was added in the last 28 days, 20 at $100"),
+    "video_vendors": ({"kling_v4": "higgsfield", "kling_v3_pro": "higgsfield", "seedance_2_0_i2v": "higgsfield", "seedance_2_0_ref": "higgsfield"},
+                      "Which vendor renders each video model: higgsfield or fal. The avatar (B1) and both lip-sync engines are fal only. Set a model to fal to move it back"),
+    "video_failover": (True, "If Higgsfield has no credit, rejects the key or is down when a clip is submitted, render the clip on fal instead (Kling 4.0 becomes Kling V3 Pro there)"),
+    "pilot_quality": ("draft", "draft: pilot clips render at lower quality (720p) for the Gate 4 approval, then the pilot is rendered again at full quality after approval; final: pilot at full quality"),
+    "pilot_draft_resolution": ("720p", "Resolution of a draft clip (Kling 4.0 and Seedance 2.0). Lip-sync needs at least 720 px on both sides, so do not go lower than 720p"),
     "max_attempts": (3, "Attempts per failed work item"),
     "lipsync_fallback": ("latentsync", "Lip-sync engine for the first redo and after Kling refuses a clip: latentsync, or none to keep Kling only"),
     "timing": ({"pad_head": 0.25, "pad_tail": 0.35, "line_gap": 0.30}, "Seconds"),

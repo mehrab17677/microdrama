@@ -8,13 +8,14 @@ from app import db, library
 from app.config import get_config
 from app.graphs import common
 from app.graphs.steps import WorkItem
-from app.media import costs
-from app.media.routing import is_brand, lipsync_engine, method_tier, needs_lipsync, shot_model_key
+from app.media import costs, providers
+from app.media.routing import MODEL_KEY_BY_TIER, is_brand, lipsync_engine, method_tier, needs_lipsync, shot_model_key
 from app.models.enums import JobKind, Vendor
 from app.stages import look
 from app.vendors import eleven, falmedia, images
 
 ANTHROPIC, OPENAI, ELEVEN, FAL, LOCAL = Vendor.anthropic, Vendor.openai, Vendor.elevenlabs, Vendor.fal, Vendor.local
+HIGGSFIELD = Vendor.higgsfield
 
 
 def _fb(shot: dict) -> dict:
@@ -254,7 +255,7 @@ def planned_video_cost(sid, batch) -> float:
     ):
         if s["planned_duration"] is None:
             continue
-        total += costs.shot_clip_cost(s["tier"], float(s["planned_duration"]), s["render_duration"], s["line_count"], s["fallback_used"], is_brand(s["spec"]))
+        total += costs.shot_clip_cost(s["tier"], float(s["planned_duration"]), s["render_duration"], s["line_count"], s["fallback_used"], is_brand(s["spec"]), providers.clip_quality(batch, s["spec"]))
         total += costs.shot_lipsync_cost(s["tier"], s["line_count"], s["render_duration"], s["fallback_used"])
     return round(total, 6)
 
@@ -273,11 +274,14 @@ def clip_items(sid, batch, rnd) -> list[WorkItem]:
             items.append(_brand_clip_item(sid, s, prompt, audio_key))
             continue
         mt = method_tier(s["tier"], s["fallback_used"], s["line_count"])
-        req = media_requests.video_request(mt, {"id": str(s["id"]), "keyframe_r2_key": s["keyframe_r2_key"], "render_duration": s["render_duration"],
-                                                        "attempts": s["attempts"], "line_count": s["line_count"]}, prompt["prompt"], prompt["camera_fixed"], audio_key)
-        cost = costs.shot_clip_cost(s["tier"], float(s["planned_duration"]), s["render_duration"], s["line_count"], s["fallback_used"], is_brand(s["spec"]))
-        items.append(WorkItem(JobKind.video_clip, FAL, {"tier": mt, "shot_id": str(s["id"]), "attempt": s["attempts"], "endpoint": req["endpoint"], "arguments": req["arguments"], "shot_audio_key": audio_key, **_fb(s)},
-                              endpoint=req["endpoint"], episode_id=s["episode_id"], shot_id=s["id"], budget_class="video", estimated_cost=cost))
+        quality = providers.clip_quality(batch, s["spec"])
+        model = MODEL_KEY_BY_TIER[mt]
+        vendor = providers.video_vendor(model)
+        shot = {"id": str(s["id"]), "keyframe_r2_key": s["keyframe_r2_key"], "render_duration": s["render_duration"], "attempts": s["attempts"], "line_count": s["line_count"]}
+        req = media_requests.video_request(mt, shot, prompt["prompt"], prompt["camera_fixed"], audio_key, vendor=vendor, quality=quality)
+        cost = costs.shot_clip_cost(s["tier"], float(s["planned_duration"]), s["render_duration"], s["line_count"], s["fallback_used"], is_brand(s["spec"]), quality)
+        items.append(WorkItem(JobKind.video_clip, _clip_vendor(req["vendor"]), _clip_payload(s, mt, req, audio_key), endpoint=req["endpoint"], episode_id=s["episode_id"], shot_id=s["id"],
+                              budget_class="video", estimated_cost=cost))
     return items
 
 
@@ -297,11 +301,24 @@ def _brand_clip_item(sid, s, prompt: dict, audio_key: str) -> WorkItem:
     line = " ".join(f'"{l["text"]}"' for l in db.fetch_all("select text from dialogue_lines where id = any(%s) order by idx", (s["line_ids"],))) if s["line_ids"] else None
     minimum = float((placement.brief(sid) or {}).get("min_exposure_seconds") or 3)
     text = brand.compose_video_prompt(prompt["prompt"], kind, tag, int(minimum), s["attempts"], bool(s["line_count"]), line)
-    req = media_requests.brand_video_request(keys, text, s["render_duration"], audio=(s["tier"] == "A"))
+    req = media_requests.brand_video_request(keys, text, s["render_duration"], audio=(s["tier"] == "A"), vendor=providers.video_vendor("seedance_2_0_ref"))
     cost = costs.shot_clip_cost(s["tier"], float(s["planned_duration"]), s["render_duration"], s["line_count"], s["fallback_used"], True)
-    return WorkItem(JobKind.video_clip, FAL, {"tier": s["tier"], "shot_id": str(s["id"]), "attempt": s["attempts"], "endpoint": req["endpoint"], "arguments": req["arguments"],
-                                              "shot_audio_key": audio_key, "brand": kind, **_fb(s)},
+    return WorkItem(JobKind.video_clip, _clip_vendor(req["vendor"]), _clip_payload(s, s["tier"], req, audio_key, brand=kind),
                     endpoint=req["endpoint"], episode_id=s["episode_id"], shot_id=s["id"], budget_class="video", estimated_cost=cost)
+
+
+def _clip_vendor(vendor: str) -> Vendor:
+    return {"higgsfield": HIGGSFIELD, "fal": FAL}[vendor]
+
+
+def _clip_payload(s, tier: str, req: dict, audio_key: str, brand: str | None = None) -> dict:
+    """The job request of a clip. model_key, vendor, quality and the seconds let the handler price the clip after a failover; `failover` is the same clip as a fal request."""
+    payload = {"tier": tier, "shot_id": str(s["id"]), "attempt": s["attempts"], "endpoint": req["endpoint"], "arguments": req["arguments"], "shot_audio_key": audio_key,
+               "model_key": req["model_key"], "vendor": req["vendor"], "quality": req["quality"], "seconds": s["render_duration"], "audio": s["line_count"] == 0 or bool(brand and s["tier"] == "A"),
+               "failover": req["failover"], **_fb(s)}
+    if brand:
+        payload["brand"] = brand
+    return payload
 
 
 def _latest_prompt(shot_id, attempts) -> dict:

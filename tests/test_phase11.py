@@ -189,10 +189,10 @@ def test_a_brand_shot_never_shares_a_keyframe_with_another_shot():
 # ---------------------------------------------------------------- routing, request and cost
 
 def test_a_brand_shot_goes_to_seedance_2_reference_to_video(env):
-    assert routing.model_key("A", brand=True) == routing.model_key("B2", brand=True) == "seedance_2_0_ref" and routing.model_key("A") == "kling_v3_pro"
+    assert routing.model_key("A", brand=True) == routing.model_key("B2", brand=True) == "seedance_2_0_ref" and routing.model_key("A") == "kling_v4"
     assert routing.model_key("B1", brand=True) == "kling_avatar_v2_pro"                   # a close-up avatar shot cannot carry a brand shot (the director may not plan one)
     assert falmedia.SEEDANCE2_REF == "bytedance/seedance-2.0/reference-to-video"
-    assert costs.shot_clip_cost("A", 5, 5, 0, False, True) == pytest.approx(5 * 0.682) and falmedia.estimate_cost("seedance_2_0_ref", duration=4) == pytest.approx(2.728)
+    assert costs.shot_clip_cost("A", 5, 5, 0, False, True) == pytest.approx(5 * 0.4293) and falmedia.estimate_cost("seedance_2_0_ref", duration=4) == pytest.approx(2.728)   # Higgsfield by default; fal for the failover
     r = media_requests.brand_video_request(["k/kf.png", "k/front.png", "k/logo.png"], "prompt", 5, False)
     assert r["endpoint"] == falmedia.SEEDANCE2_REF and r["arguments"] == {"prompt": "prompt", "image_keys": ["k/kf.png", "k/front.png", "k/logo.png"], "resolution": "1080p",
                                                                          "duration": "5", "aspect_ratio": "9:16", "generate_audio": False, "bitrate_mode": "high"}
@@ -290,8 +290,9 @@ def test_the_brand_request_is_one_validated_sentence_and_the_clip_item_adds_the_
     args = item.request["arguments"]
     front = placement.asset_rows(sid)
     assert item.endpoint == falmedia.SEEDANCE2_REF and args["image_keys"] == [f"series/{sid}/kf.png", front[0]["r2_key"], front[1]["r2_key"], placement.asset_rows(sid, ("logo",))[0]["r2_key"]]
-    assert args["resolution"] == "1080p" and args["aspect_ratio"] == "9:16" and args["bitrate_mode"] == "high" and item.request["brand"] == "product_in_use"
-    assert args["generate_audio"] == (shot["tier"] == "A") and item.estimated_cost == pytest.approx(6 * 0.682) and item.budget_class == "video"
+    assert args["resolution"] == "1080p" and args["aspect_ratio"] == "9:16" and "bitrate_mode" not in args and args["duration"] == 6 and item.request["brand"] == "product_in_use"
+    assert item.vendor == "higgsfield" and item.request["failover"]["arguments"]["bitrate_mode"] == "high" and item.request["quality"] == "final"      # a brand shot is never a draft
+    assert args["generate_audio"] == (shot["tier"] == "A") and item.estimated_cost == pytest.approx(6 * 0.4293) and item.budget_class == "video"
     prompt = args["prompt"]
     assert prompt.startswith("@Image1 is the opening frame") and "@Image2 and @Image3" in prompt and "Vaseline" not in prompt and "Lip Therapy" not in prompt and brand.TEXT_GUARD in prompt
     db.execute("update shots set attempts = 2 where id = %s", (shot["id"],))

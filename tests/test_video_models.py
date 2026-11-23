@@ -23,8 +23,8 @@ def test_every_fal_endpoint_the_app_calls_is_a_known_live_one():
     assert set(falmedia.ENDPOINT_BY_MODEL_KEY.values()) <= set(live.values())
 
 
-def test_tiers_a_b2_and_c_use_kling_v3_and_every_fallback_uses_seedance_2():
-    assert routing.model_key("A") == routing.model_key("B2") == routing.model_key("C") == "kling_v3_pro" and routing.model_key("B1") == "kling_avatar_v2_pro"
+def test_tier_a_uses_kling_4_b2_and_c_use_kling_v3_and_every_fallback_uses_seedance_2():
+    assert routing.model_key("A") == "kling_v4" and routing.model_key("B2") == routing.model_key("C") == "kling_v3_pro" and routing.model_key("B1") == "kling_avatar_v2_pro"
     assert [routing.method_tier(t, True, 1) for t in ("A", "B1", "B2", "C")] == ["S", "B2", "S", "S"]
     assert routing.model_key("A", True) == routing.model_key("B2", True, 1) == routing.model_key("C", True, 1) == "seedance_2_0_i2v"
     assert routing.model_key("B1", True, 1) == "kling_v3_pro"                                                # the avatar's fallback is a silent Kling clip, then lip-sync
@@ -55,8 +55,12 @@ def test_seedance_2_needs_at_least_four_seconds_like_the_other_main_methods():
     assert durations.render_seconds("S", 1.2) == 4 and durations.render_seconds("S", 12.0) == 10 and durations.render_seconds("A", 2.0) == 4 and durations.render_seconds("C", 1.0) == 3
 
 
-def test_what_each_method_costs_per_shot(env):
-    assert costs.shot_clip_cost("A", 9, 9, 0) == pytest.approx(9 * 0.168)                                     # Kling V3 with audio
+def test_what_each_method_costs_per_shot_when_every_model_runs_on_fal(env):
+    from psycopg.types.json import Jsonb
+
+    db.execute("update config set value = %s where key = 'video_vendors'", (Jsonb({}),))                        # every model on fal: the failover prices
+    clear_config_cache()
+    assert costs.shot_clip_cost("A", 9, 9, 0) == pytest.approx(9 * 0.168)                                     # tier A is Kling V3 with audio on fal
     assert costs.shot_clip_cost("B2", 8, 8, 1) == pytest.approx(8 * 0.112) and costs.shot_lipsync_cost("B2", 1, 8) == pytest.approx(0.14)
     assert costs.shot_clip_cost("C", 9.5, 10, 1) == pytest.approx(10 * 0.112)
     assert costs.shot_clip_cost("B1", 7, 7, 1) == pytest.approx(7 * 0.115)

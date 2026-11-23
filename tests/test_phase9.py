@@ -16,7 +16,7 @@ from app.jobs.handlers import look_handlers
 from app.media import routing
 from app.qa import episode as eq, face, lipsync, repair, shot as shot_qa, vision
 from app.stages import learning
-from app.vendors import falmedia, images, storage
+from app.vendors import falmedia, higgsfield, images, storage
 
 # ---------------------------------------------------------------- helpers
 
@@ -40,7 +40,7 @@ def test_fallback_methods_follow_the_guide():
     assert [routing.method_tier(t, True, 1) for t in ("A", "B1", "B2", "C")] == ["S", "B2", "S", "S"]          # A, B2 and C fall back to Seedance 2.0 (lip-synced when they speak); B1 to the silent-clip method
     assert routing.method_tier("C", True, 0) == "S" and routing.method_tier("B2", False, 1) == "B2" and routing.method_tier("INSERT", True, 0) == "INSERT"
     assert routing.model_key("A", True) == "seedance_2_0_i2v" and routing.model_key("B1", True, 1) == "kling_v3_pro" and routing.model_key("C", True, 0) == "seedance_2_0_i2v"
-    assert routing.model_key("A") == routing.model_key("B2") == routing.model_key("C") == "kling_v3_pro"
+    assert routing.model_key("A") == "kling_v4" and routing.model_key("B2") == routing.model_key("C") == "kling_v3_pro"
     assert not routing.needs_lipsync("B1", 2) and routing.needs_lipsync("B1", 2, True) and routing.needs_lipsync("B2", 2) and not routing.needs_lipsync("A", 0, True)
 
 
@@ -269,9 +269,9 @@ def test_the_rule_job_writes_one_short_rule_for_the_failed_shot(pilot, monkeypat
     monkeypatch.setattr(learning.llm, "complete", lambda role, system, messages, **k: (seen.append((role, messages[0]["content"])), real(role, system, messages, **k))[1])
     out = Q.llm_rule({"id": uuid.uuid4(), "series_id": pilot, "shot_id": shot["id"], "kind": "llm_rule", "request": {"check": "vision", "round": 0}})
     role, text = seen[0]
-    assert role == "rule_writer" and "kling_v3_pro" in text and "extra fingers" in text and "Prompt that was sent" in text
+    assert role == "rule_writer" and "kling_v4" in text and "extra fingers" in text and "Prompt that was sent" in text
     rule = db.fetch_one("select * from learned_rules where id = %s", (out["rule_id"],))
-    assert out["inserted"] and rule["model_key"] == "kling_v3_pro" and rule["category"] == "artefact" and rule["source_shot_id"] == shot["id"] and rule["active"]
+    assert out["inserted"] and rule["model_key"] == "kling_v4" and rule["category"] == "artefact" and rule["source_shot_id"] == shot["id"] and rule["active"]
     again = Q.llm_rule({"id": uuid.uuid4(), "series_id": pilot, "shot_id": shot["id"], "kind": "llm_rule", "request": {"check": "vision", "round": 1}})
     assert not again["inserted"] and again["rule_id"] == out["rule_id"]
     monkeypatch.setattr(learning, "write_rule", lambda s, c, fixture=None: (learning.RuleOut(rule=" ".join(["word"] * 30)), {"cost_usd": 0.0}))
@@ -373,7 +373,7 @@ def test_the_loop_ends_after_round_three_and_a_stubborn_shot_uses_the_fallback_r
     shot = episode1_shot(sid, 0)
     assert shot["status"] == "qa_failed" and shot["attempts"] == 3 and shot["fallback_used"]                                # re-rendered twice, then the fallback route, then stopped
     clips = jobs_for(sid, "video_clip", shot["id"])
-    assert len(clips) == 4 and clips[0]["endpoint"] == falmedia.KLING_V3 and clips[-1]["endpoint"] == falmedia.SEEDANCE2_I2V        # tier A falls back to Seedance 2.0
+    assert len(clips) == 4 and clips[0]["endpoint"] == higgsfield.KLING_V4 and clips[-1]["endpoint"] == higgsfield.SEEDANCE2_I2V        # tier A (Kling 4.0) falls back to Seedance 2.0
     assert clips[-1]["request"]["arguments"]["generate_audio"] is True
     s = db.fetch_one("select status, current_stage from series where id = %s", (sid,))
     assert s["status"] == "waiting_gate" and s["current_stage"] == "gate4"
@@ -386,7 +386,7 @@ def test_nothing_failing_means_no_repair_round_and_the_camera_library_learns(run
     cam = db.fetch_one("select * from camera_setups where name = 'Static medium'")
     shots = db.fetch_all("select * from shots where series_id = %s", (sid,))
     assert cam["uses"] == len(shots) and cam["passes"] == len(shots)
-    assert set(cam["prompt_by_model"]) == {"kling_v3_pro", "kling_avatar_v2_pro"}                                       # the first wording that passed, per model
+    assert set(cam["prompt_by_model"]) == {"kling_v4", "kling_v3_pro", "kling_avatar_v2_pro"}                                       # the first wording that passed, per model
     assert all(s["spec"].get("learn_counted") for s in shots)
     before = db.fetch_one("select uses from camera_setups where id = %s", (cam["id"],))["uses"]
     learning.apply_learning(sid, "pilot")                                                                                  # running the learn step again counts nothing twice
@@ -412,9 +412,9 @@ def test_a_setup_that_keeps_failing_on_a_model_learns_to_avoid_it(runner, monkey
     sid = to_pilot_gate(runner, monkeypatch=monkeypatch)
     cam = db.fetch_one("select id from camera_setups where name = 'Static medium'")["id"]
     assert db.fetch_one("select avoid_models from camera_setups where id = %s", (cam,))["avoid_models"] == []
-    db.execute("update shots set attempts = 1 where camera_setup_id = %s and tier in ('A','B2')", (cam,))                      # none of the Kling V3 shots passed first time
+    db.execute("update shots set attempts = 1 where camera_setup_id = %s and tier in ('A','B2')", (cam,))                      # none of the Kling shots passed first time
     assert learning.update_avoid_models() == 1
-    assert db.fetch_one("select avoid_models from camera_setups where id = %s", (cam,))["avoid_models"] == ["kling_v3_pro"]
+    assert db.fetch_one("select avoid_models from camera_setups where id = %s", (cam,))["avoid_models"] == ["kling_v4"]            # the shots of this setup are tier A, so it is the Kling 4.0 model it learns to avoid
     assert learning.update_avoid_models() == 0                                                                             # and only once
     from app.stages import shots as S
 
